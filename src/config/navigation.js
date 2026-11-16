@@ -26,9 +26,12 @@ export const navigation = {
     { label: 'Operators', path: '/admin/operators', icon: HardHat },
     { label: 'Machines & GPS', path: '/admin/machines', icon: Truck },
     { label: 'Bookings', path: '/admin/bookings', icon: CalendarDays },
-    { label: 'Payments', path: '/admin/payments', icon: Wallet },
     { label: 'Bills & Invoices', path: '/admin/bills', icon: ReceiptText },
+    {label: 'Operator bills & payment',path: '/admin/operator-bills-payments', icon: ReceiptText},
+    { label: 'User Payments', path: '/admin/payments', icon: Wallet },
+
     { label: 'Reports', path: '/admin/reports', icon: ChartNoAxesCombined },
+
     { label: 'Feedback', path: '/admin/feedback', icon: Star },
     { label: 'Settings', path: '/admin/settings', icon: Settings },
   ],
@@ -63,6 +66,11 @@ export const navigation = {
     {
       label: "Create Bill",
       path: "/operator/CreateBills",
+      icon: FilePlus2,
+    },
+    {
+      label: "My Earnings",
+      path: "/operator/Myearnings",
       icon: FilePlus2,
     },
     {

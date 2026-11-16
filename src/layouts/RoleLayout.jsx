@@ -42,12 +42,7 @@ export default function RoleLayout({ role }) {
             </div>
           </div>
 
-          <button
-            aria-label="Notifications"
-            className="rounded-xl border border-slate-200 p-2.5"
-          >
-            <Bell size={19} />
-          </button>
+          
         </header>
 
         <main className="mx-auto max-w-[1600px] p-4 sm:p-7">

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Truck,
   MapPin,
@@ -8,583 +9,527 @@ import {
   X,
   CheckCircle2,
   Clock3,
+  Search,
+  RefreshCw,
+  AlertCircle,
+  Wrench,
 } from "lucide-react";
 
-const machinesData = [
-  {
-    id: "MCH-001",
-    name: "JCB 3DX",
-    model: "3DX",
-    type: "Backhoe Loader",
-    location: "Manjeri, Malappuram",
-    status: "Available",
-    rate: 800,
-    year: 2024,
-    hours: "2,450 hrs",
-    description:
-      "Powerful and reliable JCB machine suitable for excavation, earth moving and site cleaning.",
-    features: [
-      "Land Excavation",
-      "Earth Moving",
-      "Site Cleaning",
-      "Road Work",
-    ],
-  },
-  {
-    id: "MCH-002",
-    name: "JCB 4DX",
-    model: "4DX",
-    type: "Backhoe Loader",
-    location: "Perinthalmanna, Malappuram",
-    status: "Available",
-    rate: 800,
-    year: 2025,
-    hours: "1,820 hrs",
-    description:
-      "Heavy-duty JCB machine suitable for foundation work, excavation and construction projects.",
-    features: [
-      "Foundation Work",
-      "Land Excavation",
-      "Earth Moving",
-      "Road Work",
-    ],
-  },
-  {
-    id: "MCH-003",
-    name: "JCB 3DX",
-    model: "3DX",
-    type: "Backhoe Loader",
-    location: "Kondotty, Malappuram",
-    status: "In Use",
-    rate: 800,
-    year: 2023,
-    hours: "3,120 hrs",
-    description:
-      "Well-maintained JCB 3DX currently assigned to an ongoing construction project.",
-    features: [
-      "Site Cleaning",
-      "Earth Moving",
-      "Excavation",
-    ],
-  },
-  {
-    id: "MCH-004",
-    name: "JCB 4DX",
-    model: "4DX",
-    type: "Backhoe Loader",
-    location: "Wandoor, Malappuram",
-    status: "Available",
-    rate: 800,
-    year: 2024,
-    hours: "2,050 hrs",
-    description:
-      "Reliable heavy-duty machine for large-scale earth moving and construction work.",
-    features: [
-      "Earth Moving",
-      "Foundation Work",
-      "Road Work",
-      "Excavation",
-    ],
-  },
-];
+const API_URL = "http://localhost:5000/api/machines/user";
 
-export default function UserMachines() {
+const UserMachines = () => {
+  const [machines, setMachines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [selectedMachine, setSelectedMachine] = useState(null);
 
-  const [statusFilter, setStatusFilter] = useState("All");
+  // Fetch machines added by Admin
+  const fetchMachines = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-  const filteredMachines =
-    statusFilter === "All"
-      ? machinesData
-      : machinesData.filter(
-          (machine) => machine.status === statusFilter
-        );
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        setError("Please login to view machines.");
+        setMachines([]);
+        return;
+      }
+
+      const response = await fetch(API_URL, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to fetch machines");
+      }
+
+      setMachines(data.machines || []);
+    } catch (err) {
+      console.error("Fetch Machines Error:", err);
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+  fetchMachines();
+
+  const interval = setInterval(() => {
+    fetchMachines();
+  }, 5000);
+
+  return () => clearInterval(interval);
+}, []);
+  // Machine counts
+  const totalMachines = machines.length;
+
+  const availableMachines = machines.filter(
+    (machine) => machine.status === "Available"
+  ).length;
+
+  const inUseMachines = machines.filter(
+    (machine) => machine.status === "In Use"
+  ).length;
+
+  const maintenanceMachines = machines.filter(
+    (machine) => machine.status === "Maintenance"
+  ).length;
+
+  // Search and status filter
+  const filteredMachines = useMemo(() => {
+    return machines.filter((machine) => {
+      const searchText = search.toLowerCase();
+
+      const matchesSearch =
+        (machine.name || "").toLowerCase().includes(searchText) ||
+        (machine.model || "").toLowerCase().includes(searchText) ||
+        (machine.registration || "").toLowerCase().includes(searchText);
+
+      const matchesStatus =
+        statusFilter === "All" || machine.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [machines, search, statusFilter]);
+
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case "Available":
+        return "bg-green-100 text-green-700";
+
+      case "In Use":
+        return "bg-blue-100 text-blue-700";
+
+      case "Maintenance":
+        return "bg-orange-100 text-orange-700";
+
+      default:
+        return "bg-gray-100 text-gray-600";
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "Available":
+        return <CheckCircle2 size={15} />;
+
+      case "In Use":
+        return <Clock3 size={15} />;
+
+      case "Maintenance":
+        return <Wrench size={15} />;
+
+      default:
+        return <AlertCircle size={15} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-[#f8f9fa] p-4 sm:p-6 lg:p-8">
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
-
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
+      {/* Header */}
+      <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-[#0B1D2B] sm:text-3xl">
-            Machines
+            Our Machines
           </h1>
 
           <p className="mt-1 text-sm text-gray-500">
-            View available JCB machines and their details
+            Explore machines available for your work requirements.
           </p>
         </div>
 
-        {/* Filter */}
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+        <button
+          onClick={fetchMachines}
+          disabled={loading}
+          className="flex items-center justify-center gap-2 rounded-lg bg-[#0B1D2B] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#18364d] disabled:opacity-60"
         >
-          <option value="All">All Machines</option>
-          <option value="Available">Available</option>
-          <option value="In Use">In Use</option>
-        </select>
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Statistics */}
+      <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+        <StatCard
+          title="Total Machines"
+          value={totalMachines}
+          icon={<Truck size={22} />}
+          iconBg="bg-yellow-100"
+          iconColor="text-yellow-700"
+        />
+
+        <StatCard
+          title="Available"
+          value={availableMachines}
+          icon={<CheckCircle2 size={22} />}
+          iconBg="bg-green-100"
+          iconColor="text-green-700"
+        />
+
+        <StatCard
+          title="In Use"
+          value={inUseMachines}
+          icon={<Clock3 size={22} />}
+          iconBg="bg-blue-100"
+          iconColor="text-blue-700"
+        />
+
+        <StatCard
+          title="Maintenance"
+          value={maintenanceMachines}
+          icon={<Wrench size={22} />}
+          iconBg="bg-orange-100"
+          iconColor="text-orange-700"
+        />
 
       </div>
 
-      {/* =====================================================
-          SUMMARY
-      ===================================================== */}
+      {/* Search and Filter */}
+      <div className="mb-6 flex flex-col gap-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm text-gray-500">
-            Total Machines
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-[#0B1D2B]">
-            {machinesData.length}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm text-gray-500">
-            Available
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-green-600">
-            {
-              machinesData.filter(
-                (machine) => machine.status === "Available"
-              ).length
-            }
-          </h2>
-        </div>
-
-        <div className="col-span-2 rounded-2xl bg-white p-5 shadow-sm lg:col-span-1">
-          <p className="text-sm text-gray-500">
-            Currently In Use
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-orange-600">
-            {
-              machinesData.filter(
-                (machine) => machine.status === "In Use"
-              ).length
-            }
-          </h2>
-        </div>
-
-      </div>
-
-      {/* =====================================================
-          MACHINE CARDS
-      ===================================================== */}
-
-      {filteredMachines.length > 0 ? (
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-
-          {filteredMachines.map((machine) => (
-
-            <div
-              key={machine.id}
-              className="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-            >
-
-              {/* Machine Image Area */}
-
-              <div className="relative flex h-48 items-center justify-center bg-[#0B1D2B]">
-
-                <Truck
-                  size={90}
-                  strokeWidth={1.3}
-                  className="text-yellow-400"
-                />
-
-                {/* Status */}
-
-                <span
-                  className={`absolute right-4 top-4 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
-                    machine.status === "Available"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-orange-100 text-orange-700"
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      machine.status === "Available"
-                        ? "bg-green-500"
-                        : "bg-orange-500"
-                    }`}
-                  />
-
-                  {machine.status}
-                </span>
-
-              </div>
-
-              {/* Card Content */}
-
-              <div className="p-5">
-
-                <div className="flex items-start justify-between gap-3">
-
-                  <div>
-                    <h2 className="text-xl font-bold text-[#0B1D2B]">
-                      {machine.name}
-                    </h2>
-
-                    <p className="mt-1 text-sm text-gray-500">
-                      {machine.type}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-
-                    <p className="text-lg font-bold text-[#0B1D2B]">
-                      ₹{machine.rate}
-                    </p>
-
-                    <p className="text-xs text-gray-400">
-                      / hour
-                    </p>
-
-                  </div>
-
-                </div>
-
-                {/* Location */}
-
-                <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
-
-                  <MapPin
-                    size={17}
-                    className="text-yellow-600"
-                  />
-
-                  {machine.location}
-
-                </div>
-
-                {/* Machine Info */}
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-
-                  <div className="rounded-xl bg-gray-50 p-3">
-
-                    <p className="text-xs text-gray-400">
-                      Model
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-[#0B1D2B]">
-                      {machine.model}
-                    </p>
-
-                  </div>
-
-                  <div className="rounded-xl bg-gray-50 p-3">
-
-                    <p className="text-xs text-gray-400">
-                      Year
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-[#0B1D2B]">
-                      {machine.year}
-                    </p>
-
-                  </div>
-
-                </div>
-
-                {/* Buttons */}
-
-                <div className="mt-5 flex gap-3">
-
-                  <button
-                    onClick={() =>
-                      setSelectedMachine(machine)
-                    }
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50"
-                  >
-                    <Eye size={17} />
-
-                    View Details
-                  </button>
-
-                  <button
-                    disabled={machine.status !== "Available"}
-                    onClick={() => {
-                      if (machine.status === "Available") {
-                        alert(
-                          `${machine.name} selected. Please go to My Bookings to book a slot.`
-                        );
-                      }
-                    }}
-                    className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
-                      machine.status === "Available"
-                        ? "bg-yellow-400 text-[#0B1D2B] hover:bg-yellow-500"
-                        : "cursor-not-allowed bg-gray-200 text-gray-400"
-                    }`}
-                  >
-                    Book
-                  </button>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          ))}
-
-        </div>
-
-      ) : (
-
-        /* Empty */
-
-        <div className="rounded-2xl bg-white px-5 py-16 text-center shadow-sm">
-
-          <Truck
-            size={45}
-            className="mx-auto text-gray-300"
+        <div className="relative w-full md:max-w-sm">
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
           />
 
-          <h3 className="mt-4 text-lg font-semibold text-gray-700">
-            No machines found
-          </h3>
-
-          <p className="mt-1 text-sm text-gray-400">
-            Try changing the machine status filter.
-          </p>
-
+          <input
+            type="text"
+            placeholder="Search machine, model or registration..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-yellow-500"
+          />
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          {["All", "Available", "In Use", "Maintenance"].map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                statusFilter === status
+                  ? "bg-[#0B1D2B] text-white"
+                  : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex min-h-[250px] flex-col items-center justify-center">
+          <RefreshCw size={32} className="animate-spin text-yellow-600" />
+
+          <p className="mt-3 text-sm text-gray-500">
+            Loading machines...
+          </p>
+        </div>
       )}
 
-      {/* =====================================================
-          MACHINE DETAILS MODAL
-      ===================================================== */}
+      {/* Error */}
+      {!loading && error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+          <AlertCircle size={35} className="mx-auto text-red-500" />
 
+          <p className="mt-3 font-semibold text-red-700">
+            {error}
+          </p>
+
+          <button
+            onClick={fetchMachines}
+            className="mt-4 rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* Machine Cards */}
+      {!loading && !error && (
+        <>
+          {filteredMachines.length === 0 ? (
+            <div className="rounded-xl border border-gray-100 bg-white px-5 py-16 text-center shadow-sm">
+              <Truck size={45} className="mx-auto text-gray-300" />
+
+              <h3 className="mt-4 text-lg font-semibold text-gray-700">
+                No Machines Found
+              </h3>
+
+              <p className="mt-1 text-sm text-gray-500">
+                {machines.length === 0
+                  ? "No machines have been added by Admin yet."
+                  : "No machines match your search or selected filter."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+
+              {filteredMachines.map((machine) => (
+                <div
+                  key={machine._id || machine.id}
+                  className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                >
+
+                  {/* Image */}
+                  <div className="relative flex h-52 items-center justify-center overflow-hidden bg-gray-100">
+
+                    {machine.image ? (
+                      <img
+                        src={machine.image}
+                        alt={machine.name || "Machine"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-gray-400">
+                        <Truck size={65} strokeWidth={1.3} />
+                        <span className="mt-2 text-xs">
+                          No Image Available
+                        </span>
+                      </div>
+                    )}
+
+                    <span
+                      className={`absolute right-3 top-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${getStatusStyle(
+                        machine.status
+                      )}`}
+                    >
+                      {getStatusIcon(machine.status)}
+                      {machine.status || "Unknown"}
+                    </span>
+
+                  </div>
+
+                  {/* Details */}
+                  <div className="p-5">
+
+                    <div className="mb-3">
+                      <h3 className="text-lg font-bold text-[#0B1D2B]">
+                        {machine.name || "Unnamed Machine"}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        {machine.model || "Model not provided"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 border-t border-gray-100 pt-4">
+
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2 text-gray-500">
+                          <Settings size={16} />
+                          Registration
+                        </span>
+
+                        <span className="font-medium text-gray-800">
+                          {machine.registration || "-"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2 text-gray-500">
+                          <Truck size={16} />
+                          Machine Type
+                        </span>
+
+                        <span className="font-medium text-gray-800">
+                          {machine.name || "-"}
+                        </span>
+                      </div>
+
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedMachine(machine)}
+                      className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B1D2B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#18364d]"
+                    >
+                      <Eye size={17} />
+                      View Details
+                    </button>
+
+                    {machine.status === "Available" && (
+                      <p className="mt-3 text-center text-xs font-medium text-green-600">
+                        This machine is available for booking.
+                      </p>
+                    )}
+
+                    {machine.status === "In Use" && (
+                      <p className="mt-3 text-center text-xs font-medium text-blue-600">
+                        Currently assigned to a booking.
+                      </p>
+                    )}
+
+                    {machine.status === "Maintenance" && (
+                      <p className="mt-3 text-center text-xs font-medium text-orange-600">
+                        Currently under maintenance.
+                      </p>
+                    )}
+
+                  </div>
+                </div>
+              ))}
+
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Machine Details Modal */}
       {selectedMachine && (
-
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
-
-            {/* Modal Header */}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setSelectedMachine(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
 
             <div className="flex items-center justify-between border-b border-gray-100 p-5">
-
-              <div>
-
-                <h2 className="text-xl font-bold text-[#0B1D2B]">
-                  Machine Details
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {selectedMachine.id}
-                </p>
-
-              </div>
+              <h2 className="text-xl font-bold text-[#0B1D2B]">
+                Machine Details
+              </h2>
 
               <button
-                onClick={() =>
-                  setSelectedMachine(null)
-                }
+                onClick={() => setSelectedMachine(null)}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X size={20} />
               </button>
-
             </div>
 
-            {/* Machine Top */}
+            {selectedMachine.image && (
+              <img
+                src={selectedMachine.image}
+                alt={selectedMachine.name || "Machine"}
+                className="h-56 w-full bg-gray-100 object-cover"
+              />
+            )}
 
-            <div className="flex flex-col gap-5 p-5 sm:flex-row">
-
-              <div className="flex h-40 w-full shrink-0 items-center justify-center rounded-2xl bg-[#0B1D2B] sm:w-48">
-
-                <Truck
-                  size={75}
-                  strokeWidth={1.3}
-                  className="text-yellow-400"
-                />
-
-              </div>
+            <div className="space-y-4 p-5">
 
               <div>
+                <h3 className="text-xl font-bold text-[#0B1D2B]">
+                  {selectedMachine.name || "-"}
+                </h3>
 
-                <div className="flex items-center gap-3">
-
-                  <h3 className="text-2xl font-bold text-[#0B1D2B]">
-                    {selectedMachine.name}
-                  </h3>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      selectedMachine.status === "Available"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-orange-100 text-orange-700"
-                    }`}
-                  >
-                    {selectedMachine.status}
-                  </span>
-
-                </div>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {selectedMachine.type}
+                <p className="text-sm text-gray-500">
+                  {selectedMachine.model || "Model not provided"}
                 </p>
-
-                <p className="mt-4 text-sm leading-6 text-gray-600">
-                  {selectedMachine.description}
-                </p>
-
               </div>
 
-            </div>
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3">
+                <span className="text-sm text-gray-500">
+                  Status
+                </span>
 
-            {/* Details Grid */}
+                <span
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
+                    selectedMachine.status
+                  )}`}
+                >
+                  {getStatusIcon(selectedMachine.status)}
+                  {selectedMachine.status || "Unknown"}
+                </span>
+              </div>
 
-            <div className="grid grid-cols-1 gap-4 px-5 sm:grid-cols-2">
+              <DetailRow
+                label="Registration Number"
+                value={selectedMachine.registration}
+              />
 
-              <MachineDetail
-                icon={<Settings size={17} />}
+              <DetailRow
+                label="Machine Name"
+                value={selectedMachine.name}
+              />
+
+              <DetailRow
                 label="Model"
                 value={selectedMachine.model}
               />
 
-              <MachineDetail
-                icon={<CalendarDays size={17} />}
-                label="Manufacturing Year"
-                value={selectedMachine.year}
+              <DetailRow
+                label="Added On"
+                value={
+                  selectedMachine.createdAt
+                    ? new Date(selectedMachine.createdAt).toLocaleDateString(
+                        "en-IN"
+                      )
+                    : "-"
+                }
               />
 
-              <MachineDetail
-                icon={<Clock3 size={17} />}
-                label="Working Hours"
-                value={selectedMachine.hours}
-              />
-
-              <MachineDetail
-                icon={<MapPin size={17} />}
-                label="Location"
-                value={selectedMachine.location}
-              />
-
-              <MachineDetail
-                icon={<IndianRupeeIcon />}
-                label="Hourly Rate"
-                value={`₹${selectedMachine.rate} / hour`}
-              />
-
-            </div>
-
-            {/* Features */}
-
-            <div className="p-5">
-
-              <h3 className="mb-3 text-sm font-bold text-[#0B1D2B]">
-                Suitable For
-              </h3>
-
-              <div className="flex flex-wrap gap-2">
-
-                {selectedMachine.features.map(
-                  (feature) => (
-
-                    <span
-                      key={feature}
-                      className="rounded-full bg-yellow-50 px-3 py-1.5 text-xs font-semibold text-yellow-700"
-                    >
-                      {feature}
-                    </span>
-
-                  )
-                )}
-
+              <div className="rounded-lg bg-yellow-50 p-4">
+                <p className="text-sm text-gray-700">
+                  {selectedMachine.status === "Available"
+                    ? "This machine is currently available. You can request a booking from the My Bookings page."
+                    : selectedMachine.status === "In Use"
+                    ? "This machine is currently in use and cannot be booked right now."
+                    : "This machine is currently under maintenance and cannot be booked right now."}
+                </p>
               </div>
 
-            </div>
-
-            {/* Footer */}
-
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
-
               <button
-                onClick={() =>
-                  setSelectedMachine(null)
-                }
-                className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                onClick={() => setSelectedMachine(null)}
+                className="w-full rounded-lg bg-[#0B1D2B] py-3 text-sm font-semibold text-white hover:bg-[#18364d]"
               >
                 Close
               </button>
 
-              {selectedMachine.status === "Available" && (
-
-                <button
-                  onClick={() => {
-                    setSelectedMachine(null);
-                    alert(
-                      `${selectedMachine.name} selected for booking.`
-                    );
-                  }}
-                  className="rounded-xl bg-yellow-400 px-5 py-2.5 text-sm font-semibold text-[#0B1D2B] hover:bg-yellow-500"
-                >
-                  Book This Machine
-                </button>
-
-              )}
-
             </div>
-
           </div>
-
         </div>
-
       )}
 
     </div>
   );
-}
+};
 
-// =====================================================
-// DETAIL COMPONENT
-// =====================================================
-
-function MachineDetail({
-  icon,
-  label,
-  value,
-}) {
+// Statistics Card
+const StatCard = ({ title, value, icon, iconBg, iconColor }) => {
   return (
-    <div className="rounded-xl bg-gray-50 p-4">
+    <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div>
+        <p className="text-sm text-gray-500">{title}</p>
+        <h3 className="mt-2 text-2xl font-bold text-[#0B1D2B]">
+          {value}
+        </h3>
+      </div>
 
-      <p className="flex items-center gap-2 text-xs text-gray-400">
+      <div className={`rounded-xl p-3 ${iconBg} ${iconColor}`}>
         {icon}
-        {label}
-      </p>
-
-      <p className="mt-1 font-semibold text-[#0B1D2B]">
-        {value}
-      </p>
-
+      </div>
     </div>
   );
-}
+};
 
-// =====================================================
-// RUPEE ICON
-// =====================================================
-
-function IndianRupeeIcon() {
+// Details Row
+const DetailRow = ({ label, value }) => {
   return (
-    <span className="text-sm font-bold">
-      ₹
-    </span>
+    <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-3 text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-right font-medium text-gray-800">
+        {value || "-"}
+      </span>
+    </div>
   );
-}
+};
+
+export default UserMachines;

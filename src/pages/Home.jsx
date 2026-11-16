@@ -1,3 +1,4 @@
+
 import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -44,38 +45,23 @@ export default function Home() {
 
           {/* NAVIGATION */}
           <nav className="hidden items-center gap-7 md:flex">
-            <a
-              href="#home"
-              className="text-sm text-white transition hover:text-yellow-400"
-            >
+            <a href="#home" className="text-sm text-white transition hover:text-yellow-400">
               Home
             </a>
 
-            <a
-              href="#services"
-              className="text-sm text-white transition hover:text-yellow-400"
-            >
+            <a href="#services" className="text-sm text-white transition hover:text-yellow-400">
               Services
             </a>
 
-            <a
-              href="#machines"
-              className="text-sm text-white transition hover:text-yellow-400"
-            >
+            <a href="#machines" className="text-sm text-white transition hover:text-yellow-400">
               Machines
             </a>
 
-            <a
-              href="#about"
-              className="text-sm text-white transition hover:text-yellow-400"
-            >
+            <a href="#about" className="text-sm text-white transition hover:text-yellow-400">
               About
             </a>
 
-            <a
-              href="#contact"
-              className="text-sm text-white transition hover:text-yellow-400"
-            >
+            <a href="#contact" className="text-sm text-white transition hover:text-yellow-400">
               Contact
             </a>
           </nav>
@@ -171,23 +157,28 @@ export default function Home() {
             </div>
           </div>
 
-          {/* HERO MACHINE */}
+          {/* HERO MACHINE IMAGE */}
           <div className="relative hidden lg:block">
 
             <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full bg-yellow-400/10 blur-3xl" />
 
             <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl">
 
-              <div className="flex h-[410px] items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400/20 via-slate-800 to-[#0B1D2B]">
+              {/* JCB IMAGE */}
+              <div className="relative h-[410px] overflow-hidden rounded-2xl">
 
-                <Truck
-                  size={190}
-                  strokeWidth={1}
-                  className="text-yellow-400"
+                <img
+                  src="\public\hero-excavator.jpg"
+                  alt="Bismi Earth Movers JCB Machine"
+                  className="h-full w-full object-cover"
                 />
+
+                {/* IMAGE OVERLAY */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0B1D2B]/70 via-transparent to-[#0B1D2B]/20" />
 
               </div>
 
+              {/* MACHINE INFORMATION CARD */}
               <div className="absolute bottom-8 left-8 right-8 rounded-2xl border border-white/10 bg-[#0B1D2B]/90 p-4 backdrop-blur">
 
                 <div className="flex items-center gap-3">
@@ -217,14 +208,10 @@ export default function Home() {
       </section>
 
       {/* ================= SERVICES ================= */}
-      <section
-        id="services"
-        className="bg-gray-50 py-14"
-      >
+      <section id="services" className="bg-gray-50 py-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
           <div className="mb-10 text-center">
-
             <p className="text-sm font-bold uppercase tracking-widest text-yellow-600">
               What We Do
             </p>
@@ -237,11 +224,9 @@ export default function Home() {
               Reliable machinery solutions for different construction
               and earth-moving requirements.
             </p>
-
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-
             {[
               {
                 icon: Truck,
@@ -268,7 +253,6 @@ export default function Home() {
                 key={title}
                 className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-yellow-400 hover:shadow-md"
               >
-
                 <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-100 text-yellow-700">
                   <Icon size={24} />
                 </div>
@@ -280,25 +264,19 @@ export default function Home() {
                 <p className="mt-2 text-sm leading-6 text-gray-500">
                   {text}
                 </p>
-
               </div>
             ))}
-
           </div>
         </div>
       </section>
 
       {/* ================= MACHINES ================= */}
-      <section
-        id="machines"
-        className="bg-white py-14"
-      >
+      <section id="machines" className="bg-white py-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
           <div className="grid items-center gap-8 md:grid-cols-2">
 
             <div>
-
               <p className="text-sm font-bold uppercase tracking-widest text-yellow-600">
                 Our Machinery
               </p>
@@ -318,64 +296,42 @@ export default function Home() {
               </p>
 
               <div className="mt-6 space-y-3">
-
                 {[
                   "JCB 3DX",
                   "JCB 4DX",
                   "Excavation Equipment",
                 ].map((machine) => (
-                  <div
-                    key={machine}
-                    className="flex items-center gap-3"
-                  >
-
-                    <CheckCircle2
-                      size={18}
-                      className="text-yellow-500"
-                    />
+                  <div key={machine} className="flex items-center gap-3">
+                    <CheckCircle2 size={18} className="text-yellow-500" />
 
                     <span className="text-sm font-semibold text-gray-700">
                       {machine}
                     </span>
-
                   </div>
                 ))}
-
               </div>
             </div>
 
             <div className="rounded-3xl bg-[#0B1D2B] p-8">
-
               <div className="grid grid-cols-2 gap-4">
 
                 <div className="rounded-2xl bg-white/5 p-5 text-center">
-
-                  <Truck
-                    size={32}
-                    className="mx-auto text-yellow-400"
-                  />
+                  <Truck size={32} className="mx-auto text-yellow-400" />
 
                   <p className="mt-3 text-sm font-bold text-white">
                     JCB Machines
                   </p>
-
                 </div>
 
                 <div className="rounded-2xl bg-white/5 p-5 text-center">
-
-                  <Truck
-                    size={32}
-                    className="mx-auto text-yellow-400"
-                  />
+                  <Truck size={32} className="mx-auto text-yellow-400" />
 
                   <p className="mt-3 text-sm font-bold text-white">
                     Excavation
                   </p>
-
                 </div>
 
                 <div className="col-span-2 rounded-2xl bg-yellow-400 p-5 text-center">
-
                   <p className="text-2xl font-black text-[#0B1D2B]">
                     Built For Every Job
                   </p>
@@ -383,7 +339,6 @@ export default function Home() {
                   <p className="mt-1 text-sm text-[#0B1D2B]/70">
                     Professional equipment support
                   </p>
-
                 </div>
 
               </div>
@@ -394,10 +349,7 @@ export default function Home() {
       </section>
 
       {/* ================= ABOUT ================= */}
-      <section
-        id="about"
-        className="bg-gray-50 py-14"
-      >
+      <section id="about" className="bg-gray-50 py-14">
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
 
           <p className="text-sm font-bold uppercase tracking-widest text-yellow-600">
@@ -419,10 +371,7 @@ export default function Home() {
       </section>
 
       {/* ================= CONTACT ================= */}
-      <section
-        id="contact"
-        className="bg-[#0B1D2B] py-14"
-      >
+      <section id="contact" className="bg-[#0B1D2B] py-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
@@ -461,11 +410,9 @@ export default function Home() {
           </div>
 
           <div className="mt-8 border-t border-white/10 pt-6 text-center">
-
             <p className="text-xs text-slate-500">
               © 2026 Bismi Earth Movers. All Rights Reserved.
             </p>
-
           </div>
 
         </div>

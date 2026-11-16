@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
@@ -8,6 +9,8 @@ import {
   ArrowLeft,
   Truck,
 } from "lucide-react";
+import { loginUserAPI } from "../../services/allApi";
+import { toast } from "react-toastify";
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -16,6 +19,9 @@ export default function Login() {
   const role = searchParams.get("role") || "user";
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [formData, setFormData] = useState({
     email: "",
@@ -35,31 +41,106 @@ export default function Login() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Backend authentication will be connected later.
-    console.log("Login data:", {
-      role,
-      ...formData,
-    });
+    setError("");
+    setSuccess("");
+    setLoading(true);
 
-    if (role === "admin") {
-      navigate("/admin");
-    } else if (role === "operator") {
-      navigate("/operator");
-    } else {
-      navigate("/user");
+    try {
+      const response = await loginUserAPI({
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+
+      console.log("Login API response:", response.data);
+
+      const data = response.data || {};
+      const token =
+        data.token || data.accessToken || data.access_token;
+
+      const user = data.user || data.data?.user;
+
+      // Backend returns user.id, so accept either id or _id
+      const userId = user?._id || user?.id;
+
+      if (!token || !user || !user.role || !userId) {
+        setError(
+          "Login response is missing user details or token. Please check the backend response."
+        );
+        return;
+      }
+
+      // Make sure the account belongs to the selected portal
+      if (user.role !== role) {
+        const message = `This account cannot log in through the ${
+          roleNames[role] || "selected"
+        } portal.`;
+
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      // Clear previous account credentials
+      localStorage.removeItem("adminToken");
+      localStorage.removeItem("operatorToken");
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // Save token for all roles
+localStorage.setItem("token", token);
+
+// Save role-specific tokens also
+if (user.role === "admin") {
+  localStorage.setItem("adminToken", token);
+} else if (user.role === "operator") {
+  localStorage.setItem("operatorToken", token);
+}
+
+      // Save user information with a consistent ID field
+      const loggedInUser = {
+        ...user,
+        _id: userId,
+      };
+
+      localStorage.setItem("user", JSON.stringify(loggedInUser));
+
+      setSuccess("Login successful!");
+      toast.success("Login successful!");
+
+      // Navigate to the correct dashboard
+      if (user.role === "admin") {
+        navigate("/admin", { replace: true });
+      } else if (user.role === "operator") {
+        navigate("/operator", { replace: true });
+      } else {
+        navigate("/user", { replace: true });
+      }
+    } catch (err) {
+      console.error(
+        "Login error:",
+        err.response?.data || err.message
+      );
+
+      const message =
+        err.response?.data?.message ||
+        "Login failed. Please check your email and password.";
+
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="flex min-h-[calc(100vh-2rem)] items-center justify-center">
-
         <div className="grid w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid-cols-2">
 
-          {/* Left Image / Branding */}
+          {/* Branding */}
           <div className="relative hidden min-h-[620px] overflow-hidden bg-[#0B1D2B] lg:block">
             <img
               src="/images/excavator.jpg"
@@ -70,22 +151,16 @@ export default function Login() {
             <div className="absolute inset-0 bg-[#0B1D2B]/70" />
 
             <div className="relative z-10 flex h-full flex-col justify-between p-10 text-white">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-yellow-400 p-3 text-[#0B1D2B]">
+                  <Truck size={28} />
+                </div>
 
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-yellow-400 p-3 text-[#0B1D2B]">
-                    <Truck size={28} />
-                  </div>
-
-                  <div>
-                    <h2 className="text-xl font-bold">
-                      Bismi
-                    </h2>
-
-                    <p className="text-sm text-slate-300">
-                      Earth Movers
-                    </p>
-                  </div>
+                <div>
+                  <h2 className="text-xl font-bold">Bismi</h2>
+                  <p className="text-sm text-slate-300">
+                    Earth Movers
+                  </p>
                 </div>
               </div>
 
@@ -105,18 +180,16 @@ export default function Login() {
                 </h2>
 
                 <p className="mt-5 max-w-md text-sm leading-6 text-slate-300">
-                  Powering your projects from ground up with
+                  Powering your projects from the ground up with
                   reliable earth moving solutions.
                 </p>
               </div>
-
             </div>
           </div>
 
-          {/* Right Login */}
+          {/* Login Form */}
           <div className="flex items-center p-6 sm:p-10 lg:p-12">
-
-            <div className="w-full max-w-md mx-auto">
+            <div className="mx-auto w-full max-w-md">
 
               {/* Mobile Logo */}
               <div className="mb-8 text-center lg:hidden">
@@ -129,8 +202,9 @@ export default function Login() {
                 </h1>
               </div>
 
-              {/* Back */}
+              {/* Back Button */}
               <button
+                type="button"
                 onClick={() => navigate("/portal-selector")}
                 className="mb-6 flex items-center gap-2 text-sm text-gray-500 transition hover:text-[#0B1D2B]"
               >
@@ -141,7 +215,7 @@ export default function Login() {
               {/* Heading */}
               <div className="mb-7">
                 <p className="text-sm font-medium text-yellow-600">
-                  {roleNames[role]} Portal
+                  {roleNames[role] || "User"} Portal
                 </p>
 
                 <h1 className="mt-1 text-3xl font-bold text-[#0B1D2B]">
@@ -154,11 +228,10 @@ export default function Login() {
               </div>
 
               <form onSubmit={handleSubmit}>
-
                 {/* Email */}
                 <div className="mb-5">
                   <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Email or Phone
+                    Email
                   </label>
 
                   <div className="relative">
@@ -168,11 +241,12 @@ export default function Login() {
                     />
 
                     <input
-                      type="text"
+                      type="email"
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
-                      placeholder="Enter your email or phone"
+                      placeholder="Enter your email"
+                      autoComplete="email"
                       className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
                       required
                     />
@@ -197,6 +271,7 @@ export default function Login() {
                       value={formData.password}
                       onChange={handleChange}
                       placeholder="Enter your password"
+                      autoComplete="current-password"
                       className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-11 text-sm outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
                       required
                     />
@@ -205,6 +280,7 @@ export default function Login() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
                         <EyeOff size={18} />
@@ -215,22 +291,39 @@ export default function Login() {
                   </div>
                 </div>
 
-                {/* Forgot */}
-                <div className="mb-6 text-right">
+                {/* Messages */}
+                {error && (
+                  <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                    {error}
+                  </p>
+                )}
+
+                {success && (
+                  <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                    {success}
+                  </p>
+                )}
+
+                {/* Forgot Password */}
+                <div className="mb-6 mt-4 text-right">
                   <button
                     type="button"
+                    onClick={() =>
+                      setError("Forgot Password feature is not available yet.")
+                    }
                     className="text-xs font-medium text-yellow-600 hover:text-yellow-700"
                   >
                     Forgot Password?
                   </button>
                 </div>
 
-                {/* Login */}
+                {/* Submit */}
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-yellow-400 px-5 py-3.5 text-sm font-bold text-slate-950 transition hover:bg-yellow-500"
+                  disabled={loading}
+                  className="w-full rounded-xl bg-yellow-400 px-5 py-3.5 text-sm font-bold text-slate-950 transition hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Login
+                  {loading ? "Logging in..." : "Login"}
                 </button>
               </form>
 
@@ -247,7 +340,7 @@ export default function Login() {
                 </p>
               )}
 
-              {/* Admin / Operator */}
+              {/* Admin / Operator Message */}
               {role !== "user" && (
                 <p className="mt-6 text-center text-xs text-gray-400">
                   {role === "operator"
@@ -255,7 +348,6 @@ export default function Login() {
                     : "Admin access is restricted to authorized personnel."}
                 </p>
               )}
-
             </div>
           </div>
         </div>

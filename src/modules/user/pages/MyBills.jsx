@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect, useMemo } from "react";
 import {
   Search,
   FileText,
@@ -11,93 +12,129 @@ import {
   IndianRupee,
   CheckCircle2,
   Clock3,
+  RefreshCw,
 } from "lucide-react";
+
+const API = "http://localhost:5000/api/bills";
+
+function formatDate(date) {
+  if (!date) return "-";
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) return "-";
+
+  return parsedDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getAmount(value) {
+  return Number(value || 0).toLocaleString("en-IN");
+}
+
+function getBookingId(id) {
+  if (!id) return "-";
+  return `BM${String(id).slice(-6).toUpperCase()}`;
+}
 
 export default function MyBills() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selectedBill, setSelectedBill] = useState(null);
 
-  const [bills] = useState([
-    {
-      id: "BILL-001",
-      bookingId: "BK-001",
-      machine: "JCB 3DX",
-      workType: "Land Excavation",
-      location: "Manjeri",
-      date: "03 Oct 2026",
-      hours: 6,
-      rate: 800,
-      amount: 4800,
-      tax: 0,
-      total: 4800,
-      status: "Paid",
-    },
-    {
-      id: "BILL-002",
-      bookingId: "BK-002",
-      machine: "JCB 4DX",
-      workType: "Foundation Work",
-      location: "Perinthalmanna",
-      date: "29 Sep 2026",
-      hours: 7,
-      rate: 800,
-      amount: 5600,
-      tax: 0,
-      total: 5600,
-      status: "Paid",
-    },
-    {
-      id: "BILL-003",
-      bookingId: "BK-003",
-      machine: "JCB 3DX",
-      workType: "Site Cleaning",
-      location: "Kondotty",
-      date: "25 Sep 2026",
-      hours: 5,
-      rate: 800,
-      amount: 4000,
-      tax: 0,
-      total: 4000,
-      status: "Pending",
-    },
-    {
-      id: "BILL-004",
-      bookingId: "BK-004",
-      machine: "JCB 4DX",
-      workType: "Earth Moving",
-      location: "Wandoor",
-      date: "18 Sep 2026",
-      hours: 7,
-      rate: 800,
-      amount: 5600,
-      tax: 0,
-      total: 5600,
-      status: "Paid",
-    },
-    {
-      id: "BILL-005",
-      bookingId: "BK-005",
-      machine: "JCB 3DX",
-      workType: "Road Work",
-      location: "Nilambur",
-      date: "12 Sep 2026",
-      hours: 5,
-      rate: 800,
-      amount: 4000,
-      tax: 0,
-      total: 4000,
-      status: "Pending",
-    },
-  ]);
+  const [bills, setBills] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredBills = bills.filter((bill) => {
-    const matchesSearch =
-      bill.id.toLowerCase().includes(search.toLowerCase()) ||
-      bill.bookingId.toLowerCase().includes(search.toLowerCase()) ||
-      bill.machine.toLowerCase().includes(search.toLowerCase()) ||
-      bill.workType.toLowerCase().includes(search.toLowerCase()) ||
-      bill.location.toLowerCase().includes(search.toLowerCase());
+  const fetchBills = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("Please login to view your bills.");
+      }
+
+      const response = await fetch(`${API}/user/my-bills`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to fetch bills.");
+      }
+
+      setBills(Array.isArray(data.bills) ? data.bills : []);
+    } catch (err) {
+      console.error("Fetch bills error:", err);
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBills();
+  }, []);
+
+  // Convert MongoDB bill data into display data
+  const formattedBills = useMemo(() => {
+    return bills.map((bill) => {
+      const booking = bill.bookingId || {};
+
+      const finalAmount =
+        bill.adminFinalAmount !== null &&
+        bill.adminFinalAmount !== undefined
+          ? Number(bill.adminFinalAmount)
+          : Number(bill.totalAmount || 0);
+
+      const hours = Number(bill.totalHours || 0);
+      const baseAmount = Number(bill.amount || 0);
+
+      return {
+        ...bill,
+        id: `BILL-${String(bill._id).slice(-6).toUpperCase()}`,
+        bookingId: getBookingId(booking._id || bill.bookingId),
+        machine: booking.machine || bill.machine || "-",
+        workType: booking.work || bill.work || "-",
+        location: bill.siteName || booking.location || booking.address || "-",
+        date: formatDate(bill.billDate || booking.date || bill.createdAt),
+        hours,
+        amount: baseAmount,
+        rate: hours > 0 ? baseAmount / hours : 0,
+        shiftingCharge: Number(bill.shiftingCharge || 0),
+        tipper: Number(bill.tipper || 0),
+        batta: Number(bill.batta || 0),
+        total: finalAmount,
+        status: bill.paymentStatus || "Pending",
+        operator: bill.operatorId?.username || "-",
+      };
+    });
+  }, [bills]);
+
+  const filteredBills = formattedBills.filter((bill) => {
+    const text = search.toLowerCase().trim();
+
+    const matchesSearch = [
+      bill.id,
+      bill.bookingId,
+      bill.machine,
+      bill.workType,
+      bill.location,
+      bill.operator,
+    ].some((value) =>
+      String(value || "").toLowerCase().includes(text)
+    );
 
     const matchesStatus =
       statusFilter === "All" || bill.status === statusFilter;
@@ -105,14 +142,14 @@ export default function MyBills() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalBills = bills.length;
+  const totalBills = formattedBills.length;
 
-  const paidAmount = bills
+  const paidAmount = formattedBills
     .filter((bill) => bill.status === "Paid")
     .reduce((sum, bill) => sum + bill.total, 0);
 
-  const pendingAmount = bills
-    .filter((bill) => bill.status === "Pending")
+  const pendingAmount = formattedBills
+    .filter((bill) => bill.status !== "Paid")
     .reduce((sum, bill) => sum + bill.total, 0);
 
   const getStatusStyle = (status) => {
@@ -124,32 +161,46 @@ export default function MyBills() {
   };
 
   const handleDownload = (bill) => {
-    alert(`Download bill ${bill.id} - PDF generation will be connected later.`);
+    alert(
+      `Bill ${bill.id} PDF download will be connected later.`
+    );
   };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#0B1D2B] sm:text-3xl">
-          My Bills
-        </h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0B1D2B] sm:text-3xl">
+            My Bills
+          </h1>
 
-        <p className="mt-1 text-sm text-gray-500">
-          View and manage all your bills and invoices
-        </p>
+          <p className="mt-1 text-sm text-gray-500">
+            View your admin-approved bills and invoices.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchBills}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <RefreshCw
+            size={16}
+            className={loading ? "animate-spin" : ""}
+          />
+          Refresh
+        </button>
       </div>
 
       {/* Summary Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {/* Total Bills */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">
                 Total Bills
               </p>
-
               <h2 className="mt-2 text-2xl font-bold text-[#0B1D2B]">
                 {totalBills}
               </h2>
@@ -161,16 +212,14 @@ export default function MyBills() {
           </div>
         </div>
 
-        {/* Paid */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">
                 Paid Amount
               </p>
-
               <h2 className="mt-2 text-2xl font-bold text-green-600">
-                ₹{paidAmount.toLocaleString("en-IN")}
+                ₹{getAmount(paidAmount)}
               </h2>
             </div>
 
@@ -180,16 +229,14 @@ export default function MyBills() {
           </div>
         </div>
 
-        {/* Pending */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">
                 Pending Amount
               </p>
-
               <h2 className="mt-2 text-2xl font-bold text-yellow-600">
-                ₹{pendingAmount.toLocaleString("en-IN")}
+                ₹{getAmount(pendingAmount)}
               </h2>
             </div>
 
@@ -199,6 +246,20 @@ export default function MyBills() {
           </div>
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p>{error}</p>
+
+          <button
+            onClick={fetchBills}
+            className="font-semibold underline"
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       {/* Bills Section */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -210,12 +271,11 @@ export default function MyBills() {
             </h2>
 
             <p className="text-sm text-gray-500">
-              Your billing history
+              Your approved billing history
             </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            {/* Search */}
             <div className="relative">
               <Search
                 size={18}
@@ -231,7 +291,6 @@ export default function MyBills() {
               />
             </div>
 
-            {/* Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -246,48 +305,43 @@ export default function MyBills() {
 
         {/* Desktop Table */}
         <div className="hidden overflow-x-auto lg:block">
-          <table className="w-full">
+          <table className="w-full min-w-[950px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Bill ID
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Booking
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Machine
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Work
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Date
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Amount
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Status
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Actions
-                </th>
+                {[
+                  "Bill ID",
+                  "Booking",
+                  "Machine",
+                  "Work",
+                  "Date",
+                  "Amount",
+                  "Status",
+                  "Actions",
+                ].map((heading) => (
+                  <th
+                    key={heading}
+                    className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500"
+                  >
+                    {heading}
+                  </th>
+                ))}
               </tr>
             </thead>
 
             <tbody>
-              {filteredBills.length > 0 ? (
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan="8"
+                    className="px-5 py-12 text-center text-gray-500"
+                  >
+                    Loading your bills...
+                  </td>
+                </tr>
+              ) : filteredBills.length > 0 ? (
                 filteredBills.map((bill) => (
                   <tr
-                    key={bill.id}
+                    key={bill._id}
                     className="border-b border-gray-100 transition hover:bg-gray-50"
                   >
                     <td className="px-5 py-4 text-sm font-semibold text-[#0B1D2B]">
@@ -311,7 +365,7 @@ export default function MyBills() {
                     </td>
 
                     <td className="px-5 py-4 text-sm font-bold text-[#0B1D2B]">
-                      ₹{bill.total.toLocaleString("en-IN")}
+                      ₹{getAmount(bill.total)}
                     </td>
 
                     <td className="px-5 py-4">
@@ -325,23 +379,13 @@ export default function MyBills() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setSelectedBill(bill)}
-                          className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
-                          title="View Details"
-                        >
-                          <Eye size={18} />
-                        </button>
-
-                        <button
-                          onClick={() => handleDownload(bill)}
-                          className="rounded-lg p-2 text-green-600 transition hover:bg-green-50"
-                          title="Download"
-                        >
-                          <Download size={18} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setSelectedBill(bill)}
+                        className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
+                        title="View Details"
+                      >
+                        <Eye size={18} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -351,7 +395,9 @@ export default function MyBills() {
                     colSpan="8"
                     className="px-5 py-12 text-center text-gray-500"
                   >
-                    No bills found.
+                    {bills.length === 0
+                      ? "No approved bills available yet."
+                      : "No bills found."}
                   </td>
                 </tr>
               )}
@@ -361,10 +407,14 @@ export default function MyBills() {
 
         {/* Mobile Cards */}
         <div className="space-y-4 p-4 lg:hidden">
-          {filteredBills.length > 0 ? (
+          {loading ? (
+            <div className="py-10 text-center text-gray-500">
+              Loading your bills...
+            </div>
+          ) : filteredBills.length > 0 ? (
             filteredBills.map((bill) => (
               <div
-                key={bill.id}
+                key={bill._id}
                 className="rounded-xl border border-gray-200 p-4"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -412,33 +462,25 @@ export default function MyBills() {
                   <div>
                     <p className="text-xs text-gray-400">Amount</p>
                     <p className="font-bold text-[#0B1D2B]">
-                      ₹{bill.total.toLocaleString("en-IN")}
+                      ₹{getAmount(bill.total)}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 flex gap-2 border-t border-gray-100 pt-3">
-                  <button
-                    onClick={() => setSelectedBill(bill)}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-                  >
-                    <Eye size={16} />
-                    View
-                  </button>
-
-                  <button
-                    onClick={() => handleDownload(bill)}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-yellow-400 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-yellow-500"
-                  >
-                    <Download size={16} />
-                    Download
-                  </button>
-                </div>
+                <button
+                  onClick={() => setSelectedBill(bill)}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-yellow-400 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-yellow-500"
+                >
+                  <Eye size={16} />
+                  View Bill
+                </button>
               </div>
             ))
           ) : (
             <div className="py-10 text-center text-gray-500">
-              No bills found.
+              {bills.length === 0
+                ? "No approved bills available yet."
+                : "No bills found."}
             </div>
           )}
         </div>
@@ -468,7 +510,6 @@ export default function MyBills() {
               </button>
             </div>
 
-            {/* Bill Content */}
             <div className="p-5">
               {/* Company */}
               <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row">
@@ -503,7 +544,6 @@ export default function MyBills() {
               <div className="mb-6 grid grid-cols-1 gap-3 rounded-xl bg-gray-50 p-4 sm:grid-cols-2">
                 <div className="flex items-center gap-3">
                   <Truck size={19} className="text-yellow-600" />
-
                   <div>
                     <p className="text-xs text-gray-400">Machine</p>
                     <p className="text-sm font-semibold text-gray-700">
@@ -514,7 +554,6 @@ export default function MyBills() {
 
                 <div className="flex items-center gap-3">
                   <FileText size={19} className="text-yellow-600" />
-
                   <div>
                     <p className="text-xs text-gray-400">Work Type</p>
                     <p className="text-sm font-semibold text-gray-700">
@@ -525,7 +564,6 @@ export default function MyBills() {
 
                 <div className="flex items-center gap-3">
                   <CalendarDays size={19} className="text-yellow-600" />
-
                   <div>
                     <p className="text-xs text-gray-400">Date</p>
                     <p className="text-sm font-semibold text-gray-700">
@@ -536,7 +574,6 @@ export default function MyBills() {
 
                 <div className="flex items-center gap-3">
                   <MapPin size={19} className="text-yellow-600" />
-
                   <div>
                     <p className="text-xs text-gray-400">Location</p>
                     <p className="text-sm font-semibold text-gray-700">
@@ -546,15 +583,14 @@ export default function MyBills() {
                 </div>
               </div>
 
-              {/* Amount Table */}
+              {/* Bill Amount Details */}
               <div className="overflow-hidden rounded-xl border border-gray-200">
                 <div className="flex justify-between border-b border-gray-200 p-4 text-sm">
                   <span className="text-gray-500">
                     Machine Service
                   </span>
-
                   <span className="font-medium text-gray-800">
-                    ₹{selectedBill.amount.toLocaleString("en-IN")}
+                    ₹{getAmount(selectedBill.amount)}
                   </span>
                 </div>
 
@@ -562,7 +598,6 @@ export default function MyBills() {
                   <span className="text-gray-500">
                     Working Hours
                   </span>
-
                   <span className="font-medium text-gray-800">
                     {selectedBill.hours} hrs
                   </span>
@@ -572,32 +607,54 @@ export default function MyBills() {
                   <span className="text-gray-500">
                     Rate / Hour
                   </span>
-
                   <span className="font-medium text-gray-800">
-                    ₹{selectedBill.rate.toLocaleString("en-IN")}
+                    ₹{getAmount(selectedBill.rate)}
                   </span>
                 </div>
 
                 <div className="flex justify-between border-b border-gray-200 p-4 text-sm">
                   <span className="text-gray-500">
-                    Tax
+                    Shifting Charge
                   </span>
-
                   <span className="font-medium text-gray-800">
-                    ₹{selectedBill.tax.toLocaleString("en-IN")}
+                    ₹{getAmount(selectedBill.shiftingCharge)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between border-b border-gray-200 p-4 text-sm">
+                  <span className="text-gray-500">Tipper</span>
+                  <span className="font-medium text-gray-800">
+                    ₹{getAmount(selectedBill.tipper)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between border-b border-gray-200 p-4 text-sm">
+                  <span className="text-gray-500">Batta</span>
+                  <span className="font-medium text-gray-800">
+                    ₹{getAmount(selectedBill.batta)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between bg-gray-50 p-4">
                   <span className="font-bold text-[#0B1D2B]">
-                    Total Amount
+                    Admin Approved Total
                   </span>
 
                   <span className="flex items-center gap-1 text-xl font-bold text-[#0B1D2B]">
                     <IndianRupee size={18} />
-                    {selectedBill.total.toLocaleString("en-IN")}
+                    {getAmount(selectedBill.total)}
                   </span>
                 </div>
+              </div>
+
+              {/* Operator */}
+              <div className="mt-4 rounded-xl bg-gray-50 p-4">
+                <p className="text-xs text-gray-400">
+                  Assigned Operator
+                </p>
+                <p className="mt-1 text-sm font-semibold text-gray-700">
+                  {selectedBill.operator}
+                </p>
               </div>
 
               {/* Status */}
@@ -615,21 +672,12 @@ export default function MyBills() {
                 </span>
               </div>
 
-              {/* Actions */}
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => setSelectedBill(null)}
                   className="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Close
-                </button>
-
-                <button
-                  onClick={() => handleDownload(selectedBill)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-yellow-400 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-yellow-500"
-                >
-                  <Download size={17} />
-                  Download Bill
                 </button>
               </div>
             </div>

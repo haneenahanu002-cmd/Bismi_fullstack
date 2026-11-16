@@ -11,6 +11,8 @@ import {
   Truck,
   MapPin,
 } from "lucide-react";
+import { registerUserAPI } from "../../services/allApi";
+import { toast } from "react-toastify";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -34,22 +36,36 @@ export default function Signup() {
     });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+ const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match.");
-      return;
-    }
+  if (formData.password !== formData.confirmPassword) {
+    toast.error("Passwords do not match.");
+    return;
+  }
 
-    // Backend registration will be connected later.
-    console.log("Registration data:", formData);
+  try {
+   const response = await registerUserAPI({
+  username: formData.name.trim(),
+  phone: formData.phone.trim(),
+  email: formData.email.trim().toLowerCase(),
+  location: formData.location.trim(),
+  password: formData.password,
+});
 
-    alert("Registration successful!");
+toast.success("Registration successful!");
 
-    navigate("/login?role=user");
-  };
+setTimeout(() => {
+  navigate("/login?role=user");
+}, 1500);
+  }catch (error) {
+  toast.error(
+    error.response?.data?.message || "Registration failed!"
+  );
 
+   
+  }
+};
   return (
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="flex min-h-[calc(100vh-2rem)] items-center justify-center">

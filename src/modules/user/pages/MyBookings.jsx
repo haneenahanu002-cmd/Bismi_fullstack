@@ -1,161 +1,321 @@
-import React, { useMemo, useState } from "react";
 
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
-  CalendarDays,
-  MapPin,
-  Truck,
+  Plus,
   Eye,
   X,
+  Truck,
+  CalendarDays,
+  Clock,
+  MapPin,
+  RefreshCw,
+  CheckCircle2,
   Clock3,
-  User,
-  IndianRupee,
-  Plus,
+  XCircle,
+  ClipboardList,
 } from "lucide-react";
 
-// --------------------------------------------------
-// SAMPLE BOOKING DATA
-// --------------------------------------------------
+const API_URL = "http://localhost:5000/api/bookings";
+const MACHINE_API = "http://localhost:5000/api/machines/available";
 
-const initialBookings = [
-  {
-    id: "BK-001",
-    machine: "JCB 3DX",
-    work: "Land Excavation",
-    location: "Manjeri, Malappuram",
-    date: "03 Oct 2026",
-    time: "09:00 AM - 03:00 PM",
-    operator: "Abdul Rahman",
-    amount: 4800,
-    status: "Confirmed",
-  },
-  {
-    id: "BK-002",
-    machine: "JCB 4DX",
-    work: "Foundation Work",
-    location: "Perinthalmanna, Malappuram",
-    date: "29 Sep 2026",
-    time: "08:00 AM - 03:00 PM",
-    operator: "Shahid K",
-    amount: 5600,
-    status: "Completed",
-  },
-  {
-    id: "BK-003",
-    machine: "JCB 3DX",
-    work: "Site Cleaning",
-    location: "Kondotty, Malappuram",
-    date: "25 Sep 2026",
-    time: "10:00 AM - 02:00 PM",
-    operator: "Rashid P",
-    amount: 4000,
-    status: "Pending",
-  },
-  {
-    id: "BK-004",
-    machine: "JCB 4DX",
-    work: "Earth Moving",
-    location: "Wandoor, Malappuram",
-    date: "18 Sep 2026",
-    time: "09:00 AM - 04:00 PM",
-    operator: "Sameer V",
-    amount: 5600,
-    status: "Completed",
-  },
-  {
-    id: "BK-005",
-    machine: "JCB 3DX",
-    work: "Road Work",
-    location: "Nilambur, Malappuram",
-    date: "12 Sep 2026",
-    time: "08:00 AM - 01:00 PM",
-    operator: "Niyas T",
-    amount: 4000,
-    status: "Cancelled",
-  },
+const emptyForm = {
+  machine: "",
+  work: "",
+  date: "",
+  startTime: "",
+  duration: "",
+  location: "",
+  address: "",
+  notes: "",
+};
+
+const workTypes = [
+  "Land Clearing",
+  "Excavation",
+  "Foundation Work",
+  "Road Construction",
+  "Road Repair",
+  "Trenching",
+  "Demolition",
+  "Site Preparation",
+  "Earth Moving",
+  "Soil Removal",
+  "Sand Loading",
+  "Material Loading",
+  "Material Unloading",
+  "Pond Digging",
+  "Drainage Work",
+  "Agricultural Work",
+  "Other",
 ];
 
-// --------------------------------------------------
-// MAIN COMPONENT
-// --------------------------------------------------
+async function readResponse(response) {
+  const text = await response.text();
+
+  if (!text) {
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.error("Invalid backend response:", text);
+
+    if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+      throw new Error(
+        `Backend HTML response received (${response.status}). Check API URL and backend routes.`
+      );
+    }
+
+    throw new Error("Backend returned an invalid response.");
+  }
+}
+
+function getToday() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDate(date) {
+  if (!date) return "-";
+
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(time) {
+  if (!time) return "-";
+
+  const [hours, minutes] = time.split(":");
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function getDisplayStatus(status) {
+  if (status === "Assigned") return "Approved";
+  return status || "Pending";
+}
+
+function StatusBadge({ status }) {
+  const displayStatus = getDisplayStatus(status);
+
+  const styles = {
+    Pending: "bg-amber-100 text-amber-700",
+    Approved: "bg-blue-100 text-blue-700",
+    Accepted: "bg-indigo-100 text-indigo-700",
+    "In Progress": "bg-purple-100 text-purple-700",
+    Completed: "bg-green-100 text-green-700",
+    Rejected: "bg-red-100 text-red-700",
+    Cancelled: "bg-gray-100 text-gray-600",
+  };
+
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${
+        styles[displayStatus] || "bg-gray-100 text-gray-600"
+      }`}
+    >
+      {displayStatus}
+    </span>
+  );
+}
+
+function FormField({ label, required, children }) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-gray-700">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
 
 export default function MyBookings() {
-  const [bookings, setBookings] = useState(initialBookings);
+  const [bookings, setBookings] = useState([]);
+  const [machines, setMachines] = useState([]);
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
 
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [showModal, setShowModal] = useState(false);
+  const [viewBooking, setViewBooking] = useState(null);
 
-  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [formData, setFormData] = useState(emptyForm);
 
-  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [machineLoading, setMachineLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // --------------------------------------------------
-  // BOOKING FORM STATE
-  // --------------------------------------------------
+  const [error, setError] = useState("");
+  const [machineError, setMachineError] = useState("");
 
-  const [formData, setFormData] = useState({
-    machine: "",
-    work: "",
-    date: "",
-    startTime: "",
-    duration: "",
-    location: "",
-    address: "",
-    notes: "",
-  });
+  const inputStyle =
+    "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/10";
 
-  // --------------------------------------------------
-  // SEARCH + FILTER
-  // --------------------------------------------------
+  const getHeaders = (json = false) => {
+    const token = localStorage.getItem("token");
 
+    return {
+      ...(json ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  // FETCH USER BOOKINGS
+  const fetchBookings = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("Please login to view your bookings.");
+      }
+
+      const response = await fetch(`${API_URL}/my-bookings`, {
+        method: "GET",
+        headers: getHeaders(),
+      });
+
+      const data = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to fetch bookings.");
+      }
+
+      setBookings(
+        Array.isArray(data.bookings) ? data.bookings : []
+      );
+    } catch (err) {
+      console.error("Fetch Bookings Error:", err);
+      setError(err.message || "Unable to load bookings.");
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // FETCH AVAILABLE MACHINES
+  const fetchAvailableMachines = async () => {
+    try {
+      setMachineLoading(true);
+      setMachineError("");
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("Please login again.");
+      }
+
+      const response = await fetch(MACHINE_API, {
+        method: "GET",
+        headers: getHeaders(),
+      });
+
+      const data = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Unable to fetch available machines."
+        );
+      }
+
+      setMachines(
+        Array.isArray(data.machines) ? data.machines : []
+      );
+    } catch (err) {
+      console.error("Fetch Available Machines Error:", err);
+      setMachineError(err.message || "Unable to load machines.");
+      setMachines([]);
+    } finally {
+      setMachineLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookings();
+    fetchAvailableMachines();
+  }, []);
+
+  // SUMMARY
+  const totalBookings = bookings.length;
+
+  const pendingCount = bookings.filter(
+    (booking) => booking.status === "Pending"
+  ).length;
+
+  const approvedCount = bookings.filter(
+    (booking) =>
+      booking.status === "Assigned" ||
+      booking.status === "Accepted"
+  ).length;
+
+  const completedCount = bookings.filter(
+    (booking) => booking.status === "Completed"
+  ).length;
+
+  // SEARCH AND FILTER
   const filteredBookings = useMemo(() => {
-    const searchValue = search.toLowerCase();
-
     return bookings.filter((booking) => {
+      const query = search.toLowerCase().trim();
+
       const matchesSearch =
-        booking.id.toLowerCase().includes(searchValue) ||
-        booking.machine.toLowerCase().includes(searchValue) ||
-        booking.work.toLowerCase().includes(searchValue) ||
-        booking.location.toLowerCase().includes(searchValue);
+        booking.machine?.toLowerCase().includes(query) ||
+        booking.work?.toLowerCase().includes(query) ||
+        booking.location?.toLowerCase().includes(query) ||
+        booking.address?.toLowerCase().includes(query) ||
+        booking._id?.toLowerCase().includes(query);
+
+      const displayStatus = getDisplayStatus(booking.status);
 
       const matchesStatus =
-        statusFilter === "All" ||
+        statusFilter === "All Status" ||
+        displayStatus === statusFilter ||
         booking.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
   }, [bookings, search, statusFilter]);
 
-  // --------------------------------------------------
-  // STATUS STYLE
-  // --------------------------------------------------
-
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case "Completed":
-        return "bg-green-100 text-green-700";
-
-      case "Confirmed":
-        return "bg-blue-100 text-blue-700";
-
-      case "Pending":
-        return "bg-yellow-100 text-yellow-700";
-
-      case "Cancelled":
-        return "bg-red-100 text-red-700";
-
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
+  // OPEN BOOKING MODAL
+  const openBookingModal = async () => {
+    setFormData({ ...emptyForm });
+    setMachineError("");
+    setShowModal(true);
+    await fetchAvailableMachines();
   };
 
-  // --------------------------------------------------
-  // FORM INPUT CHANGE
-  // --------------------------------------------------
+  const closeBookingModal = () => {
+    if (saving) return;
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+    setShowModal(false);
+    setFormData({ ...emptyForm });
+    setMachineError("");
+  };
+
+  // FORM CHANGE
+  const handleChange = (event) => {
+    const { name, value } = event.target;
 
     setFormData((previous) => ({
       ...previous,
@@ -163,1111 +323,892 @@ export default function MyBookings() {
     }));
   };
 
-  // --------------------------------------------------
-  // RESET FORM
-  // --------------------------------------------------
+  // CREATE BOOKING
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
-  const resetForm = () => {
-    setFormData({
-      machine: "",
-      work: "",
-      date: "",
-      startTime: "",
-      duration: "",
-      location: "",
-      address: "",
-      notes: "",
-    });
-  };
+    if (saving) return;
 
-  // --------------------------------------------------
-  // SUBMIT BOOKING
-  // --------------------------------------------------
+    const token = localStorage.getItem("token");
 
-  const handleBookingSubmit = (e) => {
-    e.preventDefault();
-
-    if (
-      !formData.machine ||
-      !formData.work ||
-      !formData.date ||
-      !formData.startTime ||
-      !formData.duration ||
-      !formData.location ||
-      !formData.address
-    ) {
-      alert("Please fill all required fields.");
+    if (!token) {
+      window.alert("Please login again. Authentication token missing.");
       return;
     }
 
-    // Calculate sample amount
-    const durationNumber = Number(formData.duration);
-
-    let hourlyRate = 800;
-
-    if (formData.machine === "JCB 4DX") {
-      hourlyRate = 800;
+    if (!formData.machine) {
+      window.alert("Please select a machine.");
+      return;
     }
 
-    const amount = durationNumber * hourlyRate;
+    if (!formData.work.trim()) {
+      window.alert("Please select the type of work.");
+      return;
+    }
 
-    // Create new booking ID
-    const newId = `BK-${String(bookings.length + 1).padStart(3, "0")}`;
+    if (!formData.date || !formData.startTime) {
+      window.alert("Please select booking date and time.");
+      return;
+    }
 
-    // Convert date
-    const selectedDate = new Date(formData.date);
+    if (formData.date < getToday()) {
+      window.alert("Please select today or a future date.");
+      return;
+    }
 
-    const formattedDate = selectedDate.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    const duration = Number(formData.duration);
 
-    // Create new booking
-    const newBooking = {
-      id: newId,
-      machine: formData.machine,
-      work: formData.work,
-      location: formData.location,
-      date: formattedDate,
-      time: `${formData.startTime} - ${durationNumber} Hours`,
-      operator: "Not Assigned",
-      amount: amount,
-      status: "Pending",
-    };
+    if (!Number.isFinite(duration) || duration < 1) {
+      window.alert("Duration must be at least 1 hour.");
+      return;
+    }
 
-    // Add booking
-    setBookings((previous) => [
-      newBooking,
-      ...previous,
-    ]);
+    if (!formData.location.trim() || !formData.address.trim()) {
+      window.alert("Please enter your location and full address.");
+      return;
+    }
 
-    // Close form
-    setShowBookingForm(false);
+    try {
+      setSaving(true);
 
-    // Reset form
-    resetForm();
+      const bookingData = {
+        machine: formData.machine,
+        work: formData.work.trim(),
+        date: formData.date,
+        startTime: formData.startTime,
+        duration,
+        location: formData.location.trim(),
+        address: formData.address.trim(),
+        notes: formData.notes.trim(),
+      };
 
-    alert(
-      "Booking request submitted successfully!"
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: getHeaders(true),
+        body: JSON.stringify(bookingData),
+      });
+
+      const data = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to create booking.");
+      }
+
+      window.alert("Booking request submitted successfully!");
+
+      setShowModal(false);
+      setFormData({ ...emptyForm });
+
+      await fetchBookings();
+    } catch (err) {
+      console.error("Create Booking Error:", err);
+      window.alert(err.message || "Unable to submit booking.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // CANCEL BOOKING
+  const handleCancelBooking = async (booking) => {
+    if (booking.status !== "Pending") {
+      window.alert("Only pending bookings can be cancelled.");
+      return;
+    }
+
+    const confirmCancel = window.confirm(
+      "Are you sure you want to cancel this booking?"
     );
+
+    if (!confirmCancel) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/${booking._id}/cancel`,
+        {
+          method: "PATCH",
+          headers: getHeaders(),
+        }
+      );
+
+      const data = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to cancel booking.");
+      }
+
+      window.alert("Booking cancelled successfully.");
+      setViewBooking(null);
+      await fetchBookings();
+    } catch (err) {
+      console.error("Cancel Booking Error:", err);
+      window.alert(err.message || "Unable to cancel booking.");
+    }
+  };
+
+  // OPERATOR NAME
+  const getOperatorName = (booking) => {
+    return booking.operatorId?.username || "Not assigned yet";
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-[#f5f5f4] p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-[1400px]">
 
-      {/* ==================================================
-          PAGE HEADER
-      ================================================== */}
-
-      <div className="mb-6">
-
-        <h1 className="text-2xl font-bold text-[#0B1D2B] sm:text-3xl">
-          My Bookings
-        </h1>
-
-        <p className="mt-1 text-sm text-gray-500">
-          View and track all your machine bookings
-        </p>
-
-      </div>
-
-      {/* ==================================================
-          SUMMARY CARDS
-      ================================================== */}
-
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-
-        {/* Total */}
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-
-          <p className="text-sm text-gray-500">
-            Total Bookings
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-[#0B1D2B]">
-            {bookings.length}
-          </h2>
-
-        </div>
-
-        {/* Confirmed */}
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-
-          <p className="text-sm text-gray-500">
-            Confirmed
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-blue-600">
-            {
-              bookings.filter(
-                (item) => item.status === "Confirmed"
-              ).length
-            }
-          </h2>
-
-        </div>
-
-        {/* Completed */}
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-
-          <p className="text-sm text-gray-500">
-            Completed
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-green-600">
-            {
-              bookings.filter(
-                (item) => item.status === "Completed"
-              ).length
-            }
-          </h2>
-
-        </div>
-
-        {/* Pending */}
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-
-          <p className="text-sm text-gray-500">
-            Pending
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold text-yellow-600">
-            {
-              bookings.filter(
-                (item) => item.status === "Pending"
-              ).length
-            }
-          </h2>
-
-        </div>
-
-      </div>
-
-      {/* ==================================================
-          MAIN BOOKING CARD
-      ================================================== */}
-
-      <div className="rounded-2xl bg-white shadow-sm">
-
-        {/* ==================================================
-            TOOLBAR
-        ================================================== */}
-
-        <div className="flex flex-col gap-4 border-b border-gray-100 p-5 lg:flex-row lg:items-center lg:justify-between">
-
-          {/* Heading */}
-
+        {/* HEADER */}
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[3px] text-amber-800">
+              Bismi Earth Movers / User
+            </p>
 
-            <h2 className="text-lg font-bold text-[#0B1D2B]">
+            <h1 className="text-3xl font-bold text-gray-900">
+              My Bookings
+            </h1>
+
+            <p className="mt-2 text-sm text-gray-500">
+              Book machines and track your booking requests.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                fetchBookings();
+                fetchAvailableMachines();
+              }}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-semibold disabled:opacity-50"
+            >
+              <RefreshCw
+                size={17}
+                className={loading ? "animate-spin" : ""}
+              />
+              Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={openBookingModal}
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-[#0B1D2B] hover:bg-amber-400"
+            >
+              <Plus size={19} />
+              Book a Slot
+            </button>
+          </div>
+        </div>
+
+        {/* ERROR */}
+        {error && (
+          <div className="mb-5 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-red-700">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={fetchBookings}
+              className="text-sm font-bold text-red-700 hover:underline"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* SUMMARY CARDS */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              title: "Total Bookings",
+              value: totalBookings,
+              icon: ClipboardList,
+              color: "text-gray-900",
+            },
+            {
+              title: "Pending",
+              value: pendingCount,
+              icon: Clock3,
+              color: "text-amber-600",
+            },
+            {
+              title: "Approved",
+              value: approvedCount,
+              icon: CheckCircle2,
+              color: "text-blue-600",
+            },
+            {
+              title: "Completed",
+              value: completedCount,
+              icon: CheckCircle2,
+              color: "text-green-600",
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <div
+                key={item.title}
+                className="rounded-2xl border bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      {item.title}
+                    </p>
+
+                    <h2 className={`mt-2 text-3xl font-bold ${item.color}`}>
+                      {item.value}
+                    </h2>
+                  </div>
+
+                  <Icon size={25} className={item.color} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* SEARCH AND FILTER */}
+        <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px]">
+          <div className="relative">
+            <Search
+              size={19}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+
+            <input
+              type="text"
+              placeholder="Search by machine, work, location or booking ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-amber-500"
+          >
+            <option>All Status</option>
+            <option>Pending</option>
+            <option>Approved</option>
+            <option>Accepted</option>
+            <option>In Progress</option>
+            <option>Completed</option>
+            <option>Rejected</option>
+            <option>Cancelled</option>
+          </select>
+        </div>
+
+        {/* DESKTOP TABLE */}
+        <div className="hidden overflow-hidden rounded-2xl border bg-white shadow-sm md:block">
+          <div className="border-b px-5 py-5">
+            <h2 className="text-lg font-bold text-gray-900">
               Booking History
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Track your previous and upcoming bookings
+              Showing {filteredBookings.length} of {bookings.length} bookings
             </p>
-
           </div>
 
-          {/* Search + Filter + Book */}
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-
-            {/* Search */}
-
-            <div className="relative sm:w-64">
-
-              <Search
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <input
-                type="text"
-                placeholder="Search bookings..."
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-              />
-
-            </div>
-
-            {/* Status Filter */}
-
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value)
-              }
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-yellow-400"
-            >
-
-              <option value="All">
-                All Status
-              </option>
-
-              <option value="Confirmed">
-                Confirmed
-              </option>
-
-              <option value="Pending">
-                Pending
-              </option>
-
-              <option value="Completed">
-                Completed
-              </option>
-
-              <option value="Cancelled">
-                Cancelled
-              </option>
-
-            </select>
-
-            {/* Book Slot Button */}
-
-            <button
-              onClick={() =>
-                setShowBookingForm(true)
-              }
-              className="flex items-center justify-center gap-2 rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-[#0B1D2B] transition hover:bg-yellow-500"
-            >
-
-              <Plus size={18} />
-
-              Book a Slot
-
-            </button>
-
-          </div>
-
-        </div>
-
-        {/* ==================================================
-            DESKTOP TABLE
-        ================================================== */}
-
-        <div className="hidden overflow-x-auto md:block">
-
-          <table className="w-full min-w-[1000px]">
-
-            <thead>
-
-              <tr className="border-b border-gray-100 bg-gray-50 text-left">
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Booking ID
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Machine
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Work
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Location
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Date
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Amount
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Status
-                </th>
-
-                <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Action
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {filteredBookings.map((booking) => (
-
-                <tr
-                  key={booking.id}
-                  className="border-b border-gray-100 transition hover:bg-yellow-50/40"
-                >
-
-                  <td className="px-5 py-4">
-
-                    <span className="font-semibold text-[#0B1D2B]">
-                      {booking.id}
-                    </span>
-
-                  </td>
-
-                  <td className="px-5 py-4">
-
-                    <div className="flex items-center gap-2">
-
-                      <Truck
-                        size={17}
-                        className="text-yellow-600"
-                      />
-
-                      <span className="text-sm text-gray-700">
-                        {booking.machine}
-                      </span>
-
-                    </div>
-
-                  </td>
-
-                  <td className="px-5 py-4 text-sm text-gray-700">
-                    {booking.work}
-                  </td>
-
-                  <td className="px-5 py-4">
-
-                    <div className="flex items-center gap-1.5">
-
-                      <MapPin
-                        size={15}
-                        className="text-gray-400"
-                      />
-
-                      <span className="text-sm text-gray-600">
-                        {booking.location}
-                      </span>
-
-                    </div>
-
-                  </td>
-
-                  <td className="px-5 py-4">
-
-                    <div className="flex items-center gap-2">
-
-                      <CalendarDays
-                        size={15}
-                        className="text-gray-400"
-                      />
-
-                      <span className="text-sm text-gray-600">
-                        {booking.date}
-                      </span>
-
-                    </div>
-
-                  </td>
-
-                  <td className="px-5 py-4 text-sm font-semibold text-[#0B1D2B]">
-
-                    ₹
-                    {booking.amount.toLocaleString(
-                      "en-IN"
-                    )}
-
-                  </td>
-
-                  <td className="px-5 py-4">
-
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
-                        booking.status
-                      )}`}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1050px] text-left">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  {[
+                    "Booking ID",
+                    "Machine",
+                    "Work",
+                    "Date & Time",
+                    "Duration",
+                    "Operator",
+                    "Status",
+                    "Action",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-5 py-4 text-xs font-bold uppercase text-gray-500"
                     >
-                      {booking.status}
-                    </span>
-
-                  </td>
-
-                  <td className="px-5 py-4">
-
-                    <button
-                      onClick={() =>
-                        setSelectedBooking(booking)
-                      }
-                      className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50"
-                    >
-
-                      <Eye size={15} />
-
-                      View
-
-                    </button>
-
-                  </td>
-
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
+              </thead>
 
-              ))}
+              <tbody className="divide-y">
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-16 text-center">
+                      <RefreshCw
+                        size={30}
+                        className="mx-auto animate-spin text-amber-600"
+                      />
 
-            </tbody>
+                      <p className="mt-3 text-sm text-gray-500">
+                        Loading bookings...
+                      </p>
+                    </td>
+                  </tr>
+                ) : filteredBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-16 text-center">
+                      <ClipboardList
+                        size={38}
+                        className="mx-auto text-gray-300"
+                      />
 
-          </table>
+                      <h3 className="mt-3 font-bold text-gray-800">
+                        No bookings found
+                      </h3>
 
+                      <p className="mt-1 text-sm text-gray-500">
+                        Your booking requests will appear here.
+                      </p>
+
+                      {bookings.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={openBookingModal}
+                          className="mt-4 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold"
+                        >
+                          <Plus size={16} className="mr-1 inline" />
+                          Book Your First Slot
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBookings.map((booking) => (
+                    <tr
+                      key={booking._id}
+                      className="hover:bg-amber-50/40"
+                    >
+                      <td className="px-5 py-4 text-sm font-semibold text-amber-800">
+                        {booking._id?.slice(-8).toUpperCase()}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm font-semibold text-gray-800">
+                        {booking.machine}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-600">
+                        {booking.work}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-600">
+                        <p>{formatDate(booking.date)}</p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {formatTime(booking.startTime)}
+                        </p>
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-600">
+                        {booking.duration} hour(s)
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-600">
+                        {getOperatorName(booking)}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <StatusBadge status={booking.status} />
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <button
+                          type="button"
+                          onClick={() => setViewBooking(booking)}
+                          className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+                        >
+                          <Eye size={15} />
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* ==================================================
-            MOBILE CARDS
-        ================================================== */}
+        {/* MOBILE BOOKING CARDS */}
+        <div className="space-y-4 md:hidden">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">
+              Booking History
+            </h2>
 
-        <div className="space-y-4 p-4 md:hidden">
-
-          {filteredBookings.map((booking) => (
-
-            <div
-              key={booking.id}
-              className="rounded-xl border border-gray-100 p-4"
-            >
-
-              <div className="flex items-center justify-between">
-
-                <span className="font-bold text-[#0B1D2B]">
-                  {booking.id}
-                </span>
-
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
-                    booking.status
-                  )}`}
-                >
-                  {booking.status}
-                </span>
-
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm">
-
-                <p className="flex items-center gap-2 text-gray-600">
-
-                  <Truck
-                    size={16}
-                    className="text-yellow-600"
-                  />
-
-                  {booking.machine}
-
-                </p>
-
-                <p className="text-gray-600">
-
-                  <span className="font-medium text-gray-800">
-                    Work:
-                  </span>{" "}
-
-                  {booking.work}
-
-                </p>
-
-                <p className="flex items-center gap-2 text-gray-600">
-
-                  <MapPin size={16} />
-
-                  {booking.location}
-
-                </p>
-
-                <p className="flex items-center gap-2 text-gray-600">
-
-                  <CalendarDays size={16} />
-
-                  {booking.date}
-
-                </p>
-
-                <p className="font-semibold text-[#0B1D2B]">
-
-                  ₹
-                  {booking.amount.toLocaleString(
-                    "en-IN"
-                  )}
-
-                </p>
-
-              </div>
-
-              <button
-                onClick={() =>
-                  setSelectedBooking(booking)
-                }
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 py-2.5 text-sm font-semibold text-[#0B1D2B] hover:bg-yellow-500"
-              >
-
-                <Eye size={16} />
-
-                View Details
-
-              </button>
-
-            </div>
-
-          ))}
-
-        </div>
-
-        {/* ==================================================
-            EMPTY STATE
-        ================================================== */}
-
-        {filteredBookings.length === 0 && (
-
-          <div className="px-5 py-12 text-center">
-
-            <CalendarDays
-              size={40}
-              className="mx-auto text-gray-300"
-            />
-
-            <h3 className="mt-3 font-semibold text-gray-700">
-              No bookings found
-            </h3>
-
-            <p className="mt-1 text-sm text-gray-400">
-              Try another search or status filter.
+            <p className="mt-1 text-sm text-gray-500">
+              Showing {filteredBookings.length} bookings
             </p>
-
           </div>
 
-        )}
+          {loading ? (
+            <div className="rounded-2xl border bg-white p-12 text-center">
+              <RefreshCw
+                size={28}
+                className="mx-auto animate-spin text-amber-600"
+              />
+              <p className="mt-3 text-sm text-gray-500">
+                Loading bookings...
+              </p>
+            </div>
+          ) : filteredBookings.length === 0 ? (
+            <div className="rounded-2xl border bg-white p-10 text-center">
+              <ClipboardList
+                size={36}
+                className="mx-auto text-gray-300"
+              />
+              <h3 className="mt-3 font-bold text-gray-800">
+                No bookings found
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Your booking requests will appear here.
+              </p>
+            </div>
+          ) : (
+            filteredBookings.map((booking) => (
+              <div
+                key={booking._id}
+                className="rounded-2xl border bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">
+                      #{booking._id?.slice(-8).toUpperCase()}
+                    </p>
 
-        {/* ==================================================
-            FOOTER
-        ================================================== */}
+                    <h3 className="mt-2 font-bold text-gray-900">
+                      {booking.machine}
+                    </h3>
 
-        <div className="border-t border-gray-100 px-5 py-4">
+                    <p className="mt-1 text-sm text-gray-500">
+                      {booking.work}
+                    </p>
+                  </div>
 
-          <p className="text-sm text-gray-500">
+                  <StatusBadge status={booking.status} />
+                </div>
 
-            Showing{" "}
+                <div className="mt-4 space-y-3 border-t pt-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <CalendarDays size={16} className="text-amber-700" />
+                    {formatDate(booking.date)}
+                  </div>
 
-            <span className="font-semibold text-gray-700">
-              {filteredBookings.length}
-            </span>{" "}
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock size={16} className="text-amber-700" />
+                    {formatTime(booking.startTime)} · {booking.duration} hour(s)
+                  </div>
 
-            bookings
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <MapPin size={16} className="text-amber-700" />
+                    {booking.location}
+                  </div>
+                </div>
 
-          </p>
-
+                <button
+                  type="button"
+                  onClick={() => setViewBooking(booking)}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                >
+                  <Eye size={16} />
+                  View Booking Details
+                </button>
+              </div>
+            ))
+          )}
         </div>
-
       </div>
 
-      {/* ==================================================
-          BOOKING DETAILS MODAL
-      ================================================== */}
-
-      {selectedBooking && (
-
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
-
-            {/* Header */}
-
-            <div className="flex items-center justify-between border-b border-gray-100 p-5">
-
-              <div>
-
-                <h2 className="text-xl font-bold text-[#0B1D2B]">
-                  Booking Details
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {selectedBooking.id}
-                </p>
-
-              </div>
-
-              <button
-                onClick={() =>
-                  setSelectedBooking(null)
-                }
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-              >
-
-                <X size={20} />
-
-              </button>
-
-            </div>
-
-            {/* Details */}
-
-            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-
-              <DetailBox
-                label="Machine"
-                icon={<Truck size={17} className="text-yellow-600" />}
-                value={selectedBooking.machine}
-              />
-
-              <DetailBox
-                label="Work Type"
-                value={selectedBooking.work}
-              />
-
-              <DetailBox
-                label="Location"
-                icon={<MapPin size={17} />}
-                value={selectedBooking.location}
-              />
-
-              <DetailBox
-                label="Date"
-                icon={<CalendarDays size={17} />}
-                value={selectedBooking.date}
-              />
-
-              <DetailBox
-                label="Working Time"
-                icon={<Clock3 size={17} />}
-                value={selectedBooking.time}
-              />
-
-              <DetailBox
-                label="Operator"
-                icon={<User size={17} />}
-                value={selectedBooking.operator}
-              />
-
-              <DetailBox
-                label="Total Amount"
-                icon={<IndianRupee size={17} />}
-                value={selectedBooking.amount.toLocaleString(
-                  "en-IN"
-                )}
-              />
-
-              <div className="rounded-xl bg-gray-50 p-4">
-
-                <p className="text-xs text-gray-400">
-                  Status
-                </p>
-
-                <span
-                  className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
-                    selectedBooking.status
-                  )}`}
-                >
-                  {selectedBooking.status}
-                </span>
-
-              </div>
-
-            </div>
-
-            {/* Close */}
-
-            <div className="border-t border-gray-100 p-5 text-right">
-
-              <button
-                onClick={() =>
-                  setSelectedBooking(null)
-                }
-                className="rounded-xl bg-[#0B1D2B] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#142b3c]"
-              >
-                Close
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* ==================================================
-          BOOK A SLOT MODAL
-      ================================================== */}
-
-      {showBookingForm && (
-
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
-
+      {/* BOOKING MODAL */}
+      {showModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1D2B]/60 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeBookingModal();
+          }}
+        >
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-
-            {/* Modal Header */}
-
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white p-5">
-
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-5">
               <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                  Bismi Earth Movers
+                </p>
 
-                <h2 className="text-xl font-bold text-[#0B1D2B]">
-                  Book a Machine
+                <h2 className="mt-1 text-xl font-bold text-gray-900">
+                  Book a Slot
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Select your machine and booking details
+                  Enter your machine booking details.
                 </p>
-
               </div>
 
               <button
-                onClick={() => {
-                  setShowBookingForm(false);
-                  resetForm();
-                }}
-                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100"
+                type="button"
+                onClick={closeBookingModal}
+                disabled={saving}
+                className="rounded-lg p-2 hover:bg-gray-100 disabled:opacity-50"
               >
-
                 <X size={21} />
-
               </button>
-
             </div>
 
-            {/* Form */}
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 gap-5 p-6 sm:grid-cols-2">
 
-            <form
-              onSubmit={handleBookingSubmit}
-              className="p-5"
-            >
+                {/* MACHINE DROPDOWN */}
+                <div className="sm:col-span-2">
+                  <FormField label="Select Machine" required>
+                    <select
+                      name="machine"
+                      value={formData.machine}
+                      onChange={handleChange}
+                      required
+                      disabled={machineLoading || machines.length === 0}
+                      className={inputStyle}
+                    >
+                      <option value="">
+                        {machineLoading
+                          ? "Loading available machines..."
+                          : machines.length === 0
+                          ? "No available machines"
+                          : "Select machine"}
+                      </option>
 
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                      {machines.map((machine) => (
+                        <option
+                          key={machine._id}
+                          value={machine.name}
+                        >
+                          {machine.name} - {machine.model} (
+                          {machine.registration})
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
 
-                {/* Machine */}
+                  {machineLoading && (
+                    <p className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                      <RefreshCw size={13} className="animate-spin" />
+                      Loading machines...
+                    </p>
+                  )}
 
-                <div>
+                  {machineError && (
+                    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                      <p className="text-sm text-red-700">
+                        {machineError}
+                      </p>
 
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Select Machine
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
+                      <button
+                        type="button"
+                        onClick={fetchAvailableMachines}
+                        className="mt-2 text-xs font-bold text-red-700 underline"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
 
-                  <select
-                    name="machine"
-                    value={formData.machine}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-                    required
-                  >
-
-                    <option value="">
-                      Select machine
-                    </option>
-
-                    <option value="JCB 3DX">
-                      JCB 3DX
-                    </option>
-
-                    <option value="JCB 4DX">
-                      JCB 4DX
-                    </option>
-
-                  </select>
-
+                  {!machineLoading &&
+                    !machineError &&
+                    machines.length === 0 && (
+                      <p className="mt-2 text-xs text-orange-700">
+                        No machines are currently available. Please try again later.
+                      </p>
+                    )}
                 </div>
 
-                {/* Work Type */}
+                {/* TYPE OF WORK DROPDOWN */}
+                <div className="sm:col-span-2">
+                  <FormField label="Type of Work" required>
+                    <select
+                      name="work"
+                      value={formData.work}
+                      onChange={handleChange}
+                      className={inputStyle}
+                      required
+                    >
+                      <option value="">Select type of work</option>
 
-                <div>
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Work Type
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
-                  <select
-                    name="work"
-                    value={formData.work}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-                    required
-                  >
-
-                    <option value="">
-                      Select work type
-                    </option>
-
-                    <option value="Land Excavation">
-                      Land Excavation
-                    </option>
-
-                    <option value="Foundation Work">
-                      Foundation Work
-                    </option>
-
-                    <option value="Site Cleaning">
-                      Site Cleaning
-                    </option>
-
-                    <option value="Earth Moving">
-                      Earth Moving
-                    </option>
-
-                    <option value="Road Work">
-                      Road Work
-                    </option>
-
-                  </select>
-
+                      {workTypes.map((work) => (
+                        <option key={work} value={work}>
+                          {work}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
                 </div>
 
-                {/* Date */}
-
-                <div>
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Booking Date
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
+                {/* DATE */}
+                <FormField label="Booking Date" required>
                   <input
                     type="date"
                     name="date"
+                    min={getToday()}
                     value={formData.date}
                     onChange={handleChange}
-                    min={
-                      new Date()
-                        .toISOString()
-                        .split("T")[0]
-                    }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+                    className={inputStyle}
                     required
                   />
+                </FormField>
 
-                </div>
-
-                {/* Start Time */}
-
-                <div>
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Start Time
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
+                {/* TIME */}
+                <FormField label="Start Time" required>
                   <input
                     type="time"
                     name="startTime"
                     value={formData.startTime}
                     onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+                    className={inputStyle}
                     required
                   />
+                </FormField>
 
-                </div>
-
-                {/* Duration */}
-
-                <div>
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Duration
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
-                  <select
+                {/* DURATION */}
+                <FormField label="Duration (Hours)" required>
+                  <input
+                    type="number"
                     name="duration"
+                    min="1"
+                    step="1"
                     value={formData.duration}
                     onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+                    placeholder="e.g. 5"
+                    className={inputStyle}
                     required
-                  >
+                  />
+                </FormField>
 
-                    <option value="">
-                      Select duration
-                    </option>
-
-                    <option value="2">
-                      2 Hours
-                    </option>
-
-                    <option value="4">
-                      4 Hours
-                    </option>
-
-                    <option value="6">
-                      6 Hours
-                    </option>
-
-                    <option value="8">
-                      8 Hours
-                    </option>
-
-                  </select>
-
-                </div>
-
-                {/* Location */}
-
-                <div>
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Work Location
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
+                {/* LOCATION */}
+                <FormField label="Location / Place" required>
                   <input
                     type="text"
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
-                    placeholder="Example: Manjeri"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+                    placeholder="e.g. Manjeri"
+                    className={inputStyle}
                     required
                   />
+                </FormField>
 
+                {/* ADDRESS */}
+                <div className="sm:col-span-2">
+                  <FormField label="Full Work Address" required>
+                    <textarea
+                      name="address"
+                      value={formData.address}
+                      onChange={handleChange}
+                      placeholder="Enter complete work site address..."
+                      rows={3}
+                      className={inputStyle}
+                      required
+                    />
+                  </FormField>
                 </div>
 
-                {/* Address */}
-
-                <div className="md:col-span-2">
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Full Address
-                    <span className="text-red-500">
-                      {" "}*
-                    </span>
-                  </label>
-
-                  <textarea
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    rows="3"
-                    placeholder="Enter complete work site address"
-                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-                    required
-                  />
-
+                {/* NOTES */}
+                <div className="sm:col-span-2">
+                  <FormField label="Additional Notes">
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleChange}
+                      placeholder="Any additional instructions..."
+                      rows={3}
+                      className={inputStyle}
+                    />
+                  </FormField>
                 </div>
-
-                {/* Notes */}
-
-                <div className="md:col-span-2">
-
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Additional Notes
-                  </label>
-
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleChange}
-                    rows="3"
-                    placeholder="Any additional requirements..."
-                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-                  />
-
-                </div>
-
               </div>
 
-              {/* Info */}
-
-              <div className="mt-5 rounded-xl bg-yellow-50 p-4">
-
-                <div className="flex gap-3">
-
-                  <Truck
-                    size={20}
-                    className="mt-0.5 shrink-0 text-yellow-600"
-                  />
-
-                  <div>
-
-                    <p className="text-sm font-semibold text-[#0B1D2B]">
-                      Booking Information
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-gray-600">
-                      Your booking request will be sent for
-                      confirmation. The operator and final
-                      amount will be assigned after booking
-                      confirmation.
-                    </p>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* Buttons */}
-
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-
+              {/* FORM FOOTER */}
+              <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowBookingForm(false);
-                    resetForm();
-                  }}
-                  className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  onClick={closeBookingModal}
+                  disabled={saving}
+                  className="rounded-xl border bg-white px-5 py-3 text-sm font-semibold disabled:opacity-50"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-yellow-400 px-5 py-3 text-sm font-semibold text-[#0B1D2B] transition hover:bg-yellow-500"
+                  disabled={
+                    saving ||
+                    machineLoading ||
+                    machines.length === 0
+                  }
+                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-[#0B1D2B] hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Submit Booking
+                  {saving ? (
+                    <RefreshCw size={17} className="animate-spin" />
+                  ) : (
+                    <Plus size={18} />
+                  )}
+
+                  {saving ? "Submitting..." : "Submit Booking"}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       )}
 
-    </div>
-  );
-}
+      {/* BOOKING DETAILS MODAL */}
+      {viewBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1D2B]/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
 
-// ==================================================
-// DETAIL BOX COMPONENT
-// ==================================================
+            <div className="flex items-center justify-between border-b px-6 py-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                  Booking Details
+                </p>
 
-function DetailBox({
-  label,
-  icon,
-  value,
-}) {
-  return (
-    <div className="rounded-xl bg-gray-50 p-4">
+                <h2 className="mt-1 text-xl font-bold text-gray-900">
+                  #{viewBooking._id?.slice(-8).toUpperCase()}
+                </h2>
+              </div>
 
-      <p className="text-xs text-gray-400">
-        {label}
-      </p>
+              <button
+                type="button"
+                onClick={() => setViewBooking(null)}
+                className="rounded-lg p-2 hover:bg-gray-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-      <p className="mt-1 flex items-center gap-2 font-semibold text-[#0B1D2B]">
+            <div className="space-y-5 p-6">
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
+                <div>
+                  <p className="text-xs text-gray-500">
+                    Booking Status
+                  </p>
 
-        {icon}
+                  <div className="mt-2">
+                    <StatusBadge status={viewBooking.status} />
+                  </div>
+                </div>
 
-        {value}
+                <Truck size={30} className="text-amber-700" />
+              </div>
 
-      </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Machine</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {viewBooking.machine}
+                  </p>
+                </div>
 
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Type of Work</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {viewBooking.work}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Booking Date</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {formatDate(viewBooking.date)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Start Time</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {formatTime(viewBooking.startTime)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Duration</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {viewBooking.duration} hour(s)
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">Operator</p>
+                  <p className="mt-2 font-bold text-gray-900">
+                    {getOperatorName(viewBooking)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="flex items-center gap-2 text-xs text-gray-500">
+                  <MapPin size={14} />
+                  Location
+                </p>
+
+                <p className="mt-2 font-bold text-gray-900">
+                  {viewBooking.location}
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  {viewBooking.address}
+                </p>
+              </div>
+
+              {viewBooking.notes && (
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-xs text-gray-500">
+                    Additional Notes
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-gray-700">
+                    {viewBooking.notes}
+                  </p>
+                </div>
+              )}
+
+              {viewBooking.rejectionReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-bold text-red-700">
+                    Rejection Reason
+                  </p>
+
+                  <p className="mt-2 text-sm text-red-600">
+                    {viewBooking.rejectionReason}
+                  </p>
+                </div>
+              )}
+
+              {viewBooking.status === "Pending" && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelBooking(viewBooking)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-100"
+                >
+                  <XCircle size={17} />
+                  Cancel Booking
+                </button>
+              )}
+            </div>
+
+            <div className="flex justify-end border-t bg-gray-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setViewBooking(null)}
+                className="rounded-xl bg-[#0B1D2B] px-5 py-3 text-sm font-bold text-white hover:bg-[#17364d]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

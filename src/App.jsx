@@ -1,4 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 // ================= LAYOUT =================
 import RoleLayout from "./layouts/RoleLayout";
@@ -21,6 +23,7 @@ import Reports from "./modules/admin/pages/Reports";
 import Feedback from "./modules/admin/pages/Feedback";
 import Profile from "./modules/admin/pages/Profile";
 import Settings from "./modules/admin/pages/Settings";
+import OperatorBillsPayments from "./modules/admin/pages/OperatorBillsPayments";
 
 // ================= OPERATOR =================
 import OperatorDashboard from "./modules/operator/pages/OperatorDashboard";
@@ -29,7 +32,7 @@ import CompleteJobs from "./modules/operator/pages/CompleteJobs";
 import CreateBill from "./modules/operator/pages/CreateBill";
 import OpProfile from "./modules/operator/pages/OpProfile";
 import WorkHistory from "./modules/operator/pages/WorkHistory";
-
+import OperatorWages from "./modules/operator/pages/OperatorWages";
 // ================= USER =================
 import UserDashboard from "./modules/user/pages/UserDashboard";
 import MyBookings from "./modules/user/pages/MyBookings";
@@ -38,11 +41,18 @@ import UserPayments from "./modules/user/pages/UserPayments";
 import MyBills from "./modules/user/pages/MyBills";
 import UserFeedback from "./modules/user/pages/UserFeedback";
 import UserProfile from "./modules/user/pages/UserProfile";
-
+import PaymentStatus from "./modules/user/pages/PaymentStatus";
 
 export default function App() {
   return (
+
     <BrowserRouter>
+    <ToastContainer
+    position="top-right"
+    autoClose={3000}
+    theme="colored"
+    newestOnTop
+  />
       <Routes>
 
         {/* =====================================================
@@ -125,7 +135,10 @@ export default function App() {
             path="bills"
             element={<Bills />}
           />
-
+           <Route
+  path="operator-bills-payments"
+  element={<OperatorBillsPayments />}
+/>
           {/* Reports */}
           <Route
             path="reports"
@@ -239,6 +252,14 @@ export default function App() {
             path="createbills"
             element={<CreateBill />}
           />
+          <Route
+  path="createbill/:id"
+  element={<CreateBill />}
+/>
+<Route
+  path="Myearnings"
+  element={<OperatorWages />}
+/>
 
           {/* Work History */}
           <Route
@@ -251,6 +272,10 @@ export default function App() {
             path="opprofile"
             element={<OpProfile />}
           />
+          <>
+  
+  
+</>
 
         </Route>
 

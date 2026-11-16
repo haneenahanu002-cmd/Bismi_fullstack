@@ -1,5 +1,4 @@
-
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   UserPlus,
   UserRound,
@@ -19,58 +18,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-const initialOperators = [
-  {
-    id: "OPR001",
-    name: "Arun Kumar",
-    email: "arun@bismiearthmovers.com",
-    phone: "9876543210",
-    address: "Malappuram, Kerala",
-    password: "Temporary123",
-    machine: "JCB 3DX",
-    status: "Active",
-  },
-  {
-    id: "OPR002",
-    name: "Rahul Das",
-    email: "rahul@bismiearthmovers.com",
-    phone: "9876543211",
-    address: "Manjeri, Kerala",
-    password: "Temporary123",
-    machine: "JCB 4DX",
-    status: "Active",
-  },
-  {
-    id: "OPR003",
-    name: "Navas K",
-    email: "navas@bismiearthmovers.com",
-    phone: "9876543212",
-    address: "Perinthalmanna, Kerala",
-    password: "Temporary123",
-    machine: "Excavator",
-    status: "Inactive",
-  },
-  {
-    id: "OPR004",
-    name: "Shameer Ali",
-    email: "shameer@bismiearthmovers.com",
-    phone: "9876543213",
-    address: "Kottakkal, Kerala",
-    password: "Temporary123",
-    machine: "JCB 3DX",
-    status: "Active",
-  },
-  {
-    id: "OPR005",
-    name: "Vishnu P",
-    email: "vishnu@bismiearthmovers.com",
-    phone: "9876543214",
-    address: "Kondotty, Kerala",
-    password: "Temporary123",
-    machine: "JCB 4DX",
-    status: "Active",
-  },
-];
+const API_URL = "http://localhost:5000/api/admin";
 
 const emptyForm = {
   name: "",
@@ -82,24 +30,110 @@ const emptyForm = {
   status: "Active",
 };
 
+const inputStyle =
+  "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/10";
+
+const labelStyle = "mb-2 block text-sm font-semibold text-gray-700";
+
+function getToken() {
+  return (
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("adminToken") ||
+    sessionStorage.getItem("token") ||
+    ""
+  );
+}
+
+// Backend data frontend format-il convert cheyyunnu
+function normalizeOperator(item) {
+  return {
+    id: item._id || item.id,
+    name: item.username || item.name || "",
+    email: item.email || "",
+    phone: item.phone || "",
+    address: item.location || item.address || "",
+    machine: item.machine || "JCB 3DX",
+    status: item.status || "Active",
+  };
+}
+
+async function apiRequest(path, options = {}) {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error(
+      "Admin login token kittiyilla. Logout cheythu veendum admin login cheyyuka."
+    );
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.message || data.error || `Request failed (${response.status})`
+    );
+  }
+
+  return data;
+}
+
 export default function Operators() {
-  const [operatorList, setOperatorList] = useState(initialOperators);
+  const [operatorList, setOperatorList] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editingOperator, setEditingOperator] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadOperators = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await apiRequest("/operators");
+
+      const operators = Array.isArray(data)
+        ? data
+        : data.operators || data.users || data.data || [];
+
+      setOperatorList(operators.map(normalizeOperator));
+    } catch (err) {
+      setError(err.message || "Operators load cheyyan kazhinjilla.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOperators();
+  }, [loadOperators]);
 
   const filteredOperators = useMemo(() => {
-    return operatorList.filter((operator) => {
-      const query = search.toLowerCase().trim();
+    const query = search.toLowerCase().trim();
 
-      const matchesSearch =
-        operator.id.toLowerCase().includes(query) ||
-        operator.name.toLowerCase().includes(query) ||
-        operator.email.toLowerCase().includes(query) ||
-        operator.machine.toLowerCase().includes(query);
+    return operatorList.filter((operator) => {
+      const matchesSearch = [
+        operator.id,
+        operator.name,
+        operator.email,
+        operator.machine,
+      ].some((value) =>
+        String(value || "").toLowerCase().includes(query)
+      );
 
       const matchesStatus =
         statusFilter === "All" || operator.status === statusFilter;
@@ -116,15 +150,11 @@ export default function Operators() {
     (operator) => operator.status === "Inactive"
   ).length;
 
-  const inputStyle =
-    "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/10";
-
-  const labelStyle = "mb-2 block text-sm font-semibold text-gray-700";
-
   const openAddModal = () => {
     setEditingOperator(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm });
     setShowModal(true);
+    setError("");
   };
 
   const handleEdit = (operator) => {
@@ -133,20 +163,22 @@ export default function Operators() {
     setForm({
       name: operator.name,
       email: operator.email,
-      phone: operator.phone || "",
-      address: operator.address || "",
+      phone: operator.phone,
+      address: operator.address,
       password: "",
       machine: operator.machine,
       status: operator.status,
     });
 
     setShowModal(true);
+    setError("");
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingOperator(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm });
+    setError("");
   };
 
   const handleChange = (event) => {
@@ -158,87 +190,108 @@ export default function Operators() {
     }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    setError("");
 
     const emailExists = operatorList.some(
       (operator) =>
-        operator.email.toLowerCase() === form.email.trim().toLowerCase() &&
+        operator.email.toLowerCase() ===
+          form.email.trim().toLowerCase() &&
         operator.id !== editingOperator?.id
     );
 
     if (emailExists) {
-      window.alert("This email address is already registered.");
+      setError("This email address is already registered.");
       return;
     }
 
-    if (editingOperator) {
-      setOperatorList((previous) =>
-        previous.map((operator) =>
-          operator.id === editingOperator.id
-            ? {
-                ...operator,
-                name: form.name.trim(),
-                email: form.email.trim(),
-                phone: form.phone.trim(),
-                address: form.address.trim(),
-                machine: form.machine,
-                status: form.status,
-                password: form.password
-                  ? form.password
-                  : operator.password,
-              }
-            : operator
-        )
-      );
+    setSaving(true);
 
-      window.alert("Operator updated successfully!");
-    } else {
-      const nextNumber =
-        operatorList.reduce((maximum, operator) => {
-          const number = Number(operator.id.replace("OPR", "")) || 0;
-          return Math.max(maximum, number);
-        }, 0) + 1;
+    // User model field names backend-ilekku map cheyyunnu
+    const payload = {
+      username: form.name.trim(),
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      phone: form.phone.trim(),
+      location: form.address.trim(),
+      address: form.address.trim(),
+      machine: form.machine,
+      status: form.status,
+      role: "operator",
+    };
 
-      const newOperator = {
-        id: `OPR${String(nextNumber).padStart(3, "0")}`,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        password: form.password,
-        machine: form.machine,
-        status: form.status,
-      };
-
-      setOperatorList((previous) => [...previous, newOperator]);
-      window.alert("Operator added successfully!");
+    if (form.password) {
+      payload.password = form.password;
     }
 
-    closeModal();
+    try {
+      if (editingOperator) {
+        await apiRequest(`/operators/${editingOperator.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+
+        window.alert("Operator updated successfully!");
+      } else {
+        if (!form.password || form.password.length < 12) {
+          setError("Password minimum 12 characters aayirikkanam.");
+          setSaving(false);
+          return;
+        }
+
+        await apiRequest("/operators", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        window.alert("Operator added successfully!");
+      }
+
+      closeModal();
+      await loadOperators();
+    } catch (err) {
+      setError(err.message || "Save cheyyan kazhinjilla.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
 
-    setOperatorList((previous) =>
-      previous.filter((operator) => operator.id !== deleteTarget.id)
-    );
+    setError("");
 
-    setDeleteTarget(null);
+    try {
+      await apiRequest(`/operators/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+
+      setDeleteTarget(null);
+      window.alert("Operator deleted successfully!");
+      await loadOperators();
+    } catch (err) {
+      setError(err.message || "Delete cheyyan kazhinjilla.");
+      setDeleteTarget(null);
+    }
   };
 
-  const toggleStatus = (operator) => {
+  const toggleStatus = async (operator) => {
     const nextStatus =
       operator.status === "Active" ? "Inactive" : "Active";
 
-    setOperatorList((previous) =>
-      previous.map((item) =>
-        item.id === operator.id
-          ? { ...item, status: nextStatus }
-          : item
-      )
-    );
+    try {
+      await apiRequest(`/operators/${operator.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status: nextStatus,
+        }),
+      });
+
+      await loadOperators();
+    } catch (err) {
+      window.alert(err.message || "Status update cheyyan kazhinjilla.");
+    }
   };
 
   const resetFilters = () => {
@@ -249,17 +302,12 @@ export default function Operators() {
   return (
     <div className="min-h-screen bg-[#f5f5f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-[1400px]">
-        {/* Page heading */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-[3px] text-amber-800">
               Bismi Earth Movers / Admin
             </p>
-
-            <h1 className="text-3xl font-bold text-gray-900">
-              Operators
-            </h1>
-
+            <h1 className="text-3xl font-bold text-gray-900">Operators</h1>
             <p className="mt-2 text-sm text-gray-500">
               Add, edit and manage your machine operators.
             </p>
@@ -275,68 +323,69 @@ export default function Operators() {
           </button>
         </div>
 
-        {/* Summary cards */}
+        {error && !showModal && (
+          <div className="mb-5 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <span>{error}</span>
+            <button onClick={() => setError("")} aria-label="Close error">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Total Operators
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-gray-900">
-                  {operatorList.length}
-                </h2>
-              </div>
+          {[
+            {
+              label: "Total Operators",
+              count: operatorList.length,
+              icon: Users,
+              style: "bg-amber-100 text-amber-800",
+            },
+            {
+              label: "Active Operators",
+              count: activeCount,
+              icon: CheckCircle2,
+              style: "bg-green-100 text-green-700",
+            },
+            {
+              label: "Inactive Operators",
+              count: inactiveCount,
+              icon: XCircle,
+              style: "bg-gray-100 text-gray-600",
+            },
+          ].map((card) => {
+            const Icon = card.icon;
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                <Users size={23} />
+            return (
+              <div
+                key={card.label}
+                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      {card.label}
+                    </p>
+                    <h2 className="mt-2 text-3xl font-bold text-gray-900">
+                      {card.count}
+                    </h2>
+                  </div>
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-xl ${card.style}`}
+                  >
+                    <Icon size={23} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Active Operators
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-green-700">
-                  {activeCount}
-                </h2>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-700">
-                <CheckCircle2 size={23} />
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Inactive Operators
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-gray-700">
-                  {inactiveCount}
-                </h2>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
-                <XCircle size={23} />
-              </div>
-            </div>
-          </div>
+            );
+          })}
         </div>
 
-        {/* Operators list */}
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-gray-100 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
                 Operators List
               </h2>
-
               <p className="mt-1 text-sm text-gray-500">
                 {filteredOperators.length} operator
                 {filteredOperators.length !== 1 ? "s" : ""} found
@@ -349,13 +398,12 @@ export default function Operators() {
                   size={18}
                   className="absolute left-3.5 top-3.5 text-gray-400"
                 />
-
                 <input
                   type="text"
                   placeholder="Search operators..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-amber-500 focus:bg-white sm:w-64"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-11 pr-4 text-sm outline-none focus:border-amber-500 focus:bg-white sm:w-64"
                 />
               </div>
 
@@ -372,8 +420,7 @@ export default function Operators() {
               <button
                 type="button"
                 onClick={resetFilters}
-                title="Reset filters"
-                className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100"
+                className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-100"
               >
                 <RotateCcw size={16} />
                 Reset
@@ -381,156 +428,145 @@ export default function Operators() {
             </div>
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1050px] text-left">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Operator
-                  </th>
-
-                  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Contact
-                  </th>
-
-                  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Assigned Machine
-                  </th>
-
-                  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Status
-                  </th>
-
-                  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Actions
-                  </th>
+                  {[
+                    "Operator",
+                    "Contact",
+                    "Assigned Machine",
+                    "Status",
+                    "Actions",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-gray-500"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {filteredOperators.map((operator) => (
-                  <tr
-                    key={operator.id}
-                    className="transition hover:bg-amber-50/40"
-                  >
-                    {/* Operator */}
-                    <td className="px-5 py-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 font-bold text-amber-900">
-                          {operator.name.charAt(0).toUpperCase()}
-                        </div>
-
-                        <div>
-                          <p className="whitespace-nowrap font-semibold text-gray-900">
-                            {operator.name}
-                          </p>
-
-                          <p className="mt-1 text-xs text-gray-500">
-                            {operator.id}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Contact */}
-                    <td className="px-5 py-5">
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <Mail size={15} className="text-gray-400" />
-                        {operator.email}
-                      </div>
-
-                      <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
-                        <Phone size={15} className="text-gray-400" />
-                        {operator.phone || "Not provided"}
-                      </div>
-
-                      <div className="mt-2 flex items-start gap-2 text-xs text-gray-500">
-                        <MapPin size={14} className="mt-0.5 shrink-0" />
-                        <span>{operator.address || "Not provided"}</span>
-                      </div>
-                    </td>
-
-                    {/* Machine */}
-                    <td className="px-5 py-5">
-                      <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-                        <Truck size={17} />
-                        {operator.machine}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-5 py-5">
-                      <button
-                        type="button"
-                        onClick={() => toggleStatus(operator)}
-                        title="Click to change status"
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                          operator.status === "Active"
-                            ? "bg-green-50 text-green-700 hover:bg-green-100"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }`}
-                      >
-                        <span
-                          className={`h-2 w-2 rounded-full ${
-                            operator.status === "Active"
-                              ? "bg-green-500"
-                              : "bg-gray-400"
-                          }`}
-                        />
-                        {operator.status}
-                      </button>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-5 py-5">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(operator)}
-                          className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-                        >
-                          <Pencil size={15} />
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(operator)}
-                          className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100"
-                        >
-                          <Trash2 size={15} />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
-                {filteredOperators.length === 0 && (
+                {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-16 text-center">
-                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-gray-400">
-                        <Search size={24} />
-                      </div>
-
-                      <h3 className="mt-4 font-bold text-gray-800">
-                        No operators found
-                      </h3>
-
-                      <p className="mt-1 text-sm text-gray-500">
-                        Try a different search term or reset the filters.
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={resetFilters}
-                        className="mt-4 text-sm font-bold text-amber-800 hover:underline"
-                      >
-                        Clear filters
-                      </button>
+                    <td colSpan={5} className="px-5 py-16 text-center text-gray-500">
+                      Loading operators...
                     </td>
                   </tr>
+                ) : (
+                  <>
+                    {filteredOperators.map((operator) => (
+                      <tr
+                        key={operator.id}
+                        className="transition hover:bg-amber-50/40"
+                      >
+                        <td className="px-5 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 font-bold text-amber-900">
+                              {operator.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="whitespace-nowrap font-semibold text-gray-900">
+                                {operator.name}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {operator.id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-5">
+                          <div className="flex items-center gap-2 text-sm text-gray-700">
+                            <Mail size={15} className="text-gray-400" />
+                            {operator.email}
+                          </div>
+                          <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                            <Phone size={15} className="text-gray-400" />
+                            {operator.phone || "Not provided"}
+                          </div>
+                          <div className="mt-2 flex items-start gap-2 text-xs text-gray-500">
+                            <MapPin size={14} className="mt-0.5 shrink-0" />
+                            <span>{operator.address || "Not provided"}</span>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-5">
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+                            <Truck size={17} />
+                            {operator.machine}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-5">
+                          <button
+                            type="button"
+                            onClick={() => toggleStatus(operator)}
+                            title="Click to change status"
+                            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${
+                              operator.status === "Active"
+                                ? "bg-green-50 text-green-700 hover:bg-green-100"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                operator.status === "Active"
+                                  ? "bg-green-500"
+                                  : "bg-gray-400"
+                              }`}
+                            />
+                            {operator.status}
+                          </button>
+                        </td>
+
+                        <td className="px-5 py-5">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(operator)}
+                              className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                            >
+                              <Pencil size={15} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(operator)}
+                              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {filteredOperators.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-5 py-16 text-center">
+                          <Search size={24} className="mx-auto text-gray-400" />
+                          <h3 className="mt-4 font-bold text-gray-800">
+                            No operators found
+                          </h3>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Try a different search term or reset the filters.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="mt-4 text-sm font-bold text-amber-800 hover:underline"
+                          >
+                            Clear filters
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>
@@ -551,48 +587,37 @@ export default function Operators() {
           }}
         >
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            {/* Modal header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-5">
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
                   Operator Management
                 </p>
-
                 <h2 className="mt-1 text-xl font-bold text-gray-900">
                   {editingOperator ? "Edit Operator" : "Add Operator"}
                 </h2>
-
                 <p className="mt-1 text-sm text-gray-500">
-                  {editingOperator
-                    ? "Update the operator information below."
-                    : "Enter the details to create an operator profile."}
+                  Enter the operator details below.
                 </p>
               </div>
-
               <button
                 type="button"
                 onClick={closeModal}
                 aria-label="Close modal"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100"
               >
                 <X size={21} />
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-1 gap-5 p-6 sm:grid-cols-2">
                 <div>
-                  <label className={labelStyle}>
-                    Full Name *
-                  </label>
-
+                  <label className={labelStyle}>Full Name *</label>
                   <div className="relative">
                     <UserRound
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <input
                       name="name"
                       value={form.name}
@@ -605,16 +630,12 @@ export default function Operators() {
                 </div>
 
                 <div>
-                  <label className={labelStyle}>
-                    Email Address *
-                  </label>
-
+                  <label className={labelStyle}>Email Address *</label>
                   <div className="relative">
                     <Mail
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <input
                       name="email"
                       type="email"
@@ -628,16 +649,12 @@ export default function Operators() {
                 </div>
 
                 <div>
-                  <label className={labelStyle}>
-                    Phone Number *
-                  </label>
-
+                  <label className={labelStyle}>Phone Number *</label>
                   <div className="relative">
                     <Phone
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <input
                       name="phone"
                       type="tel"
@@ -651,16 +668,12 @@ export default function Operators() {
                 </div>
 
                 <div>
-                  <label className={labelStyle}>
-                    Assign Machine *
-                  </label>
-
+                  <label className={labelStyle}>Assign Machine *</label>
                   <div className="relative">
                     <Truck
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <select
                       name="machine"
                       value={form.machine}
@@ -675,16 +688,12 @@ export default function Operators() {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className={labelStyle}>
-                    Full Address *
-                  </label>
-
+                  <label className={labelStyle}>Full Address *</label>
                   <div className="relative">
                     <MapPin
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <textarea
                       name="address"
                       value={form.address}
@@ -702,13 +711,11 @@ export default function Operators() {
                       ? "Change Password (Optional)"
                       : "Temporary Password *"}
                   </label>
-
                   <div className="relative">
                     <LockKeyhole
                       size={18}
                       className="absolute left-3.5 top-3.5 text-gray-400"
                     />
-
                     <input
                       name="password"
                       type="password"
@@ -725,17 +732,13 @@ export default function Operators() {
                       autoComplete="new-password"
                     />
                   </div>
-
                   <p className="mt-2 text-xs text-gray-500">
                     Minimum 12 characters.
                   </p>
                 </div>
 
                 <div>
-                  <label className={labelStyle}>
-                    Operator Status *
-                  </label>
-
+                  <label className={labelStyle}>Operator Status *</label>
                   <select
                     name="status"
                     value={form.status}
@@ -748,29 +751,38 @@ export default function Operators() {
                 </div>
               </div>
 
-              {/* Modal footer */}
+              {error && (
+                <div className="mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+
               <div className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100"
+                  className="rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-100"
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
-                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-[#0B1D2B] transition hover:bg-amber-400"
+                  disabled={saving}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-[#0B1D2B] hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {editingOperator ? (
-                    <Pencil size={17} />
+                  {saving ? (
+                    "Saving..."
+                  ) : editingOperator ? (
+                    <>
+                      <Pencil size={17} />
+                      Update Operator
+                    </>
                   ) : (
-                    <UserPlus size={17} />
+                    <>
+                      <UserPlus size={17} />
+                      Create Operator
+                    </>
                   )}
-
-                  {editingOperator
-                    ? "Update Operator"
-                    : "Create Operator"}
                 </button>
               </div>
             </form>
@@ -778,39 +790,36 @@ export default function Operators() {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete confirmation */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0B1D2B]/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600">
               <AlertTriangle size={24} />
             </div>
-
             <h2 className="mt-4 text-xl font-bold text-gray-900">
               Delete Operator?
             </h2>
-
             <p className="mt-2 text-sm leading-6 text-gray-500">
               Are you sure you want to delete{" "}
               <span className="font-bold text-gray-800">
                 {deleteTarget.name}
               </span>
-              ? This action will remove the operator from this displayed list.
+              ? This action cannot be undone.
             </p>
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100"
+                className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-100"
               >
                 Cancel
               </button>
-
               <button
                 type="button"
                 onClick={handleDelete}
-                className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700"
+                className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white hover:bg-red-700"
               >
                 <Trash2 size={16} />
                 Yes, Delete

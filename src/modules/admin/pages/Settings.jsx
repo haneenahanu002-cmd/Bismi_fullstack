@@ -3,7 +3,6 @@ import React, { useEffect, useState } from "react";
 import {
   User,
   Lock,
-  Bell,
   Settings as SettingsIcon,
   ShieldCheck,
   Save,
@@ -16,76 +15,29 @@ import {
   Building2,
   CheckCircle,
   X,
+  Loader2,
 } from "lucide-react";
 
+const API = "http://localhost:5000/api/settings";
+
 const DEFAULT_PROFILE = {
-  name: "Admin",
-  email: "admin@bismiearthmovers.com",
-  phone: "+91 90371 92107",
-  role: "Administrator",
-  businessName: "Bismi Earth Movers",
-  address: "Malappuram, Kerala, India",
-  bio: "Managing earth-moving equipment, bookings and operations.",
+  name: "",
+  email: "",
+  phone: "",
+  role: "admin",
+  address: "",
+  bio: "",
   photo: "",
 };
 
-const DEFAULT_NOTIFICATIONS = {
-  notifications: true,
-  emailAlerts: true,
-  bookingAlerts: true,
-  paymentAlerts: true,
-  operatorAlerts: true,
+const DEFAULT_BUSINESS = {
+  businessName: "",
+  phone: "",
+  address: "",
 };
 
 const inputClass =
   "w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100";
-
-function readStorage(key, fallback) {
-  try {
-    const value = localStorage.getItem(key);
-    return value ? { ...fallback, ...JSON.parse(value) } : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveStorage(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function Toggle({ title, description, enabled, onChange }) {
-  return (
-    <div className="flex items-center justify-between gap-4 p-5">
-      <div>
-        <p className="text-sm font-semibold text-gray-900">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-gray-500">
-          {description}
-        </p>
-      </div>
-
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        onClick={() => onChange(!enabled)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-          enabled ? "bg-yellow-500" : "bg-gray-300"
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${
-            enabled ? "left-6" : "left-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
 
 function SectionHeading({ icon: Icon, title, description }) {
   return (
@@ -103,13 +55,9 @@ function SectionHeading({ icon: Icon, title, description }) {
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("General");
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
-  const [notifications, setNotifications] = useState(
-    DEFAULT_NOTIFICATIONS
-  );
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [business, setBusiness] = useState(DEFAULT_BUSINESS);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -117,27 +65,68 @@ export default function Settings() {
     confirmPassword: "",
   });
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
-  const [photoPreview, setPhotoPreview] = useState("");
 
-  useEffect(() => {
-    const savedProfile = readStorage("bismi_admin_profile", DEFAULT_PROFILE);
-    const savedNotifications = readStorage(
-      "bismi_admin_notifications",
-      DEFAULT_NOTIFICATIONS
-    );
+  const token = localStorage.getItem("token");
 
-    setProfile(savedProfile);
-    setNotifications(savedNotifications);
-    setPhotoPreview(savedProfile.photo || "");
-  }, []);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
   const showMessage = (text, type = "success") => {
     setMessage(text);
     setMessageType(type);
   };
 
+  // GET ADMIN SETTINGS
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+
+      const response = await fetch(`${API}/admin`, {
+        method: "GET",
+        headers,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to load settings.");
+      }
+
+      setProfile({
+        ...DEFAULT_PROFILE,
+        ...data.profile,
+      });
+
+      setBusiness({
+        ...DEFAULT_BUSINESS,
+        ...data.business,
+      });
+
+      setPhotoPreview(data.profile?.photo || "");
+    } catch (error) {
+      showMessage(error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // UPDATE PROFILE INPUTS
   const updateProfile = (e) => {
     const { name, value } = e.target;
 
@@ -147,6 +136,17 @@ export default function Settings() {
     }));
   };
 
+  // UPDATE BUSINESS INPUTS
+  const updateBusiness = (e) => {
+    const { name, value } = e.target;
+
+    setBusiness((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  // PROFILE PHOTO
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -167,11 +167,14 @@ export default function Settings() {
 
     reader.onload = () => {
       const result = reader.result;
+
       setPhotoPreview(result);
+
       setProfile((previous) => ({
         ...previous,
         photo: result,
       }));
+
       setMessage("");
     };
 
@@ -182,7 +185,8 @@ export default function Settings() {
     reader.readAsDataURL(file);
   };
 
-  const saveProfile = (e) => {
+  // SAVE PROFILE
+  const saveProfile = async (e) => {
     e?.preventDefault();
 
     if (!profile.name.trim() || !profile.email.trim()) {
@@ -190,68 +194,96 @@ export default function Settings() {
       return;
     }
 
-    const updatedProfile = {
-      ...profile,
-      name: profile.name.trim(),
-      email: profile.email.trim(),
-      phone: profile.phone.trim(),
-      businessName: profile.businessName.trim(),
-      address: profile.address.trim(),
-    };
+    try {
+      setSaving(true);
 
-    if (!saveStorage("bismi_admin_profile", updatedProfile)) {
-      showMessage(
-        "Unable to save. Browser storage may be full.",
-        "error"
-      );
-      return;
+      const response = await fetch(`${API}/admin/profile`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          name: profile.name,
+          email: profile.email,
+          phone: profile.phone,
+          address: profile.address,
+          bio: profile.bio,
+          photo: profile.photo,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Profile update failed.");
+      }
+
+      setProfile((previous) => ({
+        ...previous,
+        ...data.profile,
+      }));
+
+      setPhotoPreview(data.profile?.photo || "");
+
+      showMessage(data.message || "Profile updated successfully.");
+    } catch (error) {
+      showMessage(error.message, "error");
+    } finally {
+      setSaving(false);
     }
-
-    setProfile(updatedProfile);
-    showMessage("Profile details saved successfully.");
   };
 
-  const saveGeneral = (e) => {
+  // SAVE BUSINESS SETTINGS
+  const saveBusiness = async (e) => {
     e.preventDefault();
 
-    if (!profile.businessName.trim() || !profile.address.trim()) {
+    if (!business.businessName.trim() || !business.address.trim()) {
       showMessage("Business name and address are required.", "error");
       return;
     }
 
-    saveProfile();
-  };
+    try {
+      setSaving(true);
 
-  const updateNotification = (key, value) => {
-    setNotifications((previous) => ({
-      ...previous,
-      [key]: value,
-    }));
-    setMessage("");
-  };
+      const response = await fetch(`${API}/admin/business`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(business),
+      });
 
-  const saveNotifications = () => {
-    if (!saveStorage("bismi_admin_notifications", notifications)) {
-      showMessage("Unable to save notification preferences.", "error");
-      return;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Business update failed.");
+      }
+
+      setBusiness({
+        ...DEFAULT_BUSINESS,
+        ...data.business,
+      });
+
+      showMessage(data.message || "Business settings saved.");
+    } catch (error) {
+      showMessage(error.message, "error");
+    } finally {
+      setSaving(false);
     }
-
-    showMessage("Notification preferences saved.");
   };
 
-  const handlePasswordChange = (e) => {
+  // CHANGE PASSWORD
+  const handlePasswordChange = async (e) => {
     e.preventDefault();
 
-    if (
-      !passwordForm.currentPassword ||
-      !passwordForm.newPassword ||
-      !passwordForm.confirmPassword
-    ) {
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = passwordForm;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
       showMessage("Please complete all password fields.", "error");
       return;
     }
 
-    if (passwordForm.newPassword.length < 8) {
+    if (newPassword.length < 8) {
       showMessage(
         "New password must contain at least 8 characters.",
         "error"
@@ -259,23 +291,48 @@ export default function Settings() {
       return;
     }
 
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    if (newPassword !== confirmPassword) {
       showMessage("New passwords do not match.", "error");
       return;
     }
 
-    // A secure password change must be verified by the backend.
-    showMessage(
-      "Password changes require backend authentication. No password was changed.",
-      "error"
-    );
+    try {
+      setSaving(true);
+
+      const response = await fetch(`${API}/admin/change-password`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Password update failed.");
+      }
+
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+
+      showMessage(data.message || "Password changed successfully.");
+    } catch (error) {
+      showMessage(error.message, "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
+  // SETTINGS TABS
   const tabs = [
     { name: "General", icon: SettingsIcon },
     { name: "Profile", icon: User },
     { name: "Security", icon: Lock },
-    { name: "Notifications", icon: Bell },
   ];
 
   const changeTab = (tab) => {
@@ -283,17 +340,25 @@ export default function Settings() {
     setMessage("");
   };
 
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center gap-3 text-gray-600">
+        <Loader2 className="animate-spin" size={24} />
+        Loading admin settings...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f8f6] p-4 sm:p-6 lg:p-8">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage your account, business profile and preferences.
+          Manage your account and business information.
         </p>
       </div>
 
-      {/* Status Message */}
+      {/* SUCCESS / ERROR MESSAGE */}
       {message && (
         <div
           role="status"
@@ -308,7 +373,9 @@ export default function Settings() {
           ) : (
             <X size={19} className="shrink-0" />
           )}
+
           <span>{message}</span>
+
           <button
             type="button"
             onClick={() => setMessage("")}
@@ -321,7 +388,8 @@ export default function Settings() {
       )}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
-        {/* Navigation */}
+
+        {/* SIDEBAR */}
         <aside className="h-fit rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
           <p className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400">
             Account Settings
@@ -361,7 +429,7 @@ export default function Settings() {
                 <p className="truncate text-sm font-semibold text-gray-900">
                   {profile.name}
                 </p>
-                <p className="truncate text-xs text-gray-500">
+                <p className="truncate text-xs capitalize text-gray-500">
                   {profile.role}
                 </p>
               </div>
@@ -370,10 +438,11 @@ export default function Settings() {
         </aside>
 
         <main className="min-w-0 space-y-6">
-          {/* GENERAL */}
+
+          {/* GENERAL SETTINGS */}
           {activeTab === "General" && (
             <form
-              onSubmit={saveGeneral}
+              onSubmit={saveBusiness}
               className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
             >
               <SectionHeading
@@ -387,10 +456,11 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Business Name *
                   </label>
+
                   <input
                     name="businessName"
-                    value={profile.businessName}
-                    onChange={updateProfile}
+                    value={business.businessName}
+                    onChange={updateBusiness}
                     className={inputClass}
                     required
                   />
@@ -400,11 +470,12 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Business Phone
                   </label>
+
                   <input
                     name="phone"
                     type="tel"
-                    value={profile.phone}
-                    onChange={updateProfile}
+                    value={business.phone}
+                    onChange={updateBusiness}
                     className={inputClass}
                   />
                 </div>
@@ -413,11 +484,12 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Business Address *
                   </label>
+
                   <textarea
                     name="address"
                     rows={3}
-                    value={profile.address}
-                    onChange={updateProfile}
+                    value={business.address}
+                    onChange={updateBusiness}
                     className={inputClass}
                     required
                   />
@@ -429,10 +501,9 @@ export default function Settings() {
                       <Building2 size={18} />
                       Business Information
                     </div>
+
                     <p className="mt-2">
-                      Update these details to keep your admin settings
-                      current. This local demo does not automatically
-                      update invoices or other modules.
+                      These details are saved in your database.
                     </p>
                   </div>
                 </div>
@@ -441,16 +512,21 @@ export default function Settings() {
               <div className="flex justify-end border-t border-gray-100 p-5">
                 <button
                   type="submit"
-                  className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600"
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600 disabled:opacity-60"
                 >
-                  <Save size={17} />
-                  Save General Settings
+                  {saving ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <Save size={17} />
+                  )}
+                  Save Changes
                 </button>
               </div>
             </form>
           )}
 
-          {/* PROFILE */}
+          {/* PROFILE SETTINGS */}
           {activeTab === "Profile" && (
             <form
               onSubmit={saveProfile}
@@ -462,6 +538,7 @@ export default function Settings() {
                 description="Manage your personal account information."
               />
 
+              {/* PROFILE PHOTO */}
               <div className="border-b border-gray-100 p-6">
                 <p className="mb-4 text-sm font-semibold text-gray-800">
                   Profile Photo
@@ -496,17 +573,21 @@ export default function Settings() {
                     <p className="font-semibold text-gray-900">
                       {profile.name}
                     </p>
-                    <p className="mt-1 text-sm text-gray-500">
+
+                    <p className="mt-1 text-sm capitalize text-gray-500">
                       {profile.role}
                     </p>
+
                     <p className="mt-2 text-xs text-gray-400">
                       JPG, PNG or WEBP · Maximum 2 MB
                     </p>
+
                     {photoPreview && (
                       <button
                         type="button"
                         onClick={() => {
                           setPhotoPreview("");
+
                           setProfile((previous) => ({
                             ...previous,
                             photo: "",
@@ -521,22 +602,24 @@ export default function Settings() {
                 </div>
               </div>
 
+              {/* PROFILE DETAILS */}
               <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Full Name *
                   </label>
+
                   <div className="relative">
                     <User
                       size={17}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
+
                     <input
                       name="name"
                       value={profile.name}
                       onChange={updateProfile}
                       className={`${inputClass} pl-10`}
-                      placeholder="Enter full name"
                       required
                     />
                   </div>
@@ -546,18 +629,19 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Email Address *
                   </label>
+
                   <div className="relative">
                     <Mail
                       size={17}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
+
                     <input
                       name="email"
                       type="email"
                       value={profile.email}
                       onChange={updateProfile}
                       className={`${inputClass} pl-10`}
-                      placeholder="admin@example.com"
                       required
                     />
                   </div>
@@ -567,11 +651,13 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Phone Number
                   </label>
+
                   <div className="relative">
                     <Phone
                       size={17}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
+
                     <input
                       name="phone"
                       type="tel"
@@ -586,25 +672,25 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Role
                   </label>
+
                   <input
                     value={profile.role}
                     readOnly
                     className={`${inputClass} cursor-not-allowed bg-gray-50 text-gray-500`}
                   />
-                  <p className="mt-1 text-xs text-gray-400">
-                    Role changes require administrator authorization.
-                  </p>
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Address
+                    Personal Address
                   </label>
+
                   <div className="relative">
                     <MapPin
                       size={17}
                       className="absolute left-3 top-4 text-gray-400"
                     />
+
                     <textarea
                       name="address"
                       value={profile.address}
@@ -619,13 +705,13 @@ export default function Settings() {
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     About
                   </label>
+
                   <textarea
                     name="bio"
                     value={profile.bio}
                     onChange={updateProfile}
                     rows={3}
                     className={inputClass}
-                    placeholder="Write a short profile description"
                   />
                 </div>
               </div>
@@ -633,16 +719,21 @@ export default function Settings() {
               <div className="flex justify-end border-t border-gray-100 p-5">
                 <button
                   type="submit"
-                  className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600"
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600 disabled:opacity-60"
                 >
-                  <Save size={17} />
+                  {saving ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <Save size={17} />
+                  )}
                   Save Profile
                 </button>
               </div>
             </form>
           )}
 
-          {/* SECURITY */}
+          {/* SECURITY SETTINGS */}
           {activeTab === "Security" && (
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
               <SectionHeading
@@ -658,24 +749,30 @@ export default function Settings() {
                       size={22}
                       className="shrink-0 text-yellow-700"
                     />
+
                     <div>
                       <p className="font-semibold text-gray-900">
                         Account Security
                       </p>
+
                       <p className="mt-1 text-sm leading-6 text-gray-600">
-                        A real password change must verify your current
-                        password through the backend. This form will not
-                        change or store passwords locally.
+                        Your current password will be verified by the server.
+                        The new password will be securely hashed before saving.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <form onSubmit={handlePasswordChange} className="space-y-5">
+                <form
+                  onSubmit={handlePasswordChange}
+                  className="space-y-5"
+                >
+                  {/* CURRENT PASSWORD */}
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
                       Current Password
                     </label>
+
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
@@ -688,14 +785,13 @@ export default function Settings() {
                           }))
                         }
                         className={`${inputClass} pr-12`}
-                        placeholder="Enter current password"
                         required
                       />
+
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        aria-label="Toggle current password visibility"
                       >
                         {showPassword ? (
                           <EyeOff size={18} />
@@ -706,10 +802,12 @@ export default function Settings() {
                     </div>
                   </div>
 
+                  {/* NEW PASSWORD */}
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
                       New Password
                     </label>
+
                     <input
                       type="password"
                       autoComplete="new-password"
@@ -721,16 +819,17 @@ export default function Settings() {
                         }))
                       }
                       className={inputClass}
-                      placeholder="At least 8 characters"
                       minLength={8}
                       required
                     />
                   </div>
 
+                  {/* CONFIRM PASSWORD */}
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
                       Confirm New Password
                     </label>
+
                     <div className="relative">
                       <input
                         type={showConfirmPassword ? "text" : "password"}
@@ -743,17 +842,16 @@ export default function Settings() {
                           }))
                         }
                         className={`${inputClass} pr-12`}
-                        placeholder="Re-enter new password"
                         minLength={8}
                         required
                       />
+
                       <button
                         type="button"
                         onClick={() =>
                           setShowConfirmPassword(!showConfirmPassword)
                         }
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        aria-label="Toggle confirmation password visibility"
                       >
                         {showConfirmPassword ? (
                           <EyeOff size={18} />
@@ -766,96 +864,30 @@ export default function Settings() {
 
                   <button
                     type="submit"
-                    className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600"
+                    disabled={saving}
+                    className="flex items-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600 disabled:opacity-60"
                   >
-                    <Lock size={17} />
+                    {saving ? (
+                      <Loader2 size={17} className="animate-spin" />
+                    ) : (
+                      <Lock size={17} />
+                    )}
                     Update Password
                   </button>
                 </form>
 
+                {/* SECURITY RECOMMENDATIONS */}
                 <div className="border-t border-gray-100 pt-5">
                   <h3 className="font-semibold text-gray-900">
                     Security Recommendations
                   </h3>
+
                   <ul className="mt-3 space-y-2 text-sm text-gray-600">
                     <li>• Use a unique password with at least 8 characters.</li>
                     <li>• Never share your admin login details.</li>
                     <li>• Always log out when using a shared computer.</li>
                   </ul>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* NOTIFICATIONS */}
-          {activeTab === "Notifications" && (
-            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-              <SectionHeading
-                icon={Bell}
-                title="Notification Preferences"
-                description="Choose the types of alerts you want to receive."
-              />
-
-              <div className="divide-y divide-gray-100">
-                <Toggle
-                  title="System Notifications"
-                  description="Enable or disable application notifications."
-                  enabled={notifications.notifications}
-                  onChange={(value) =>
-                    updateNotification("notifications", value)
-                  }
-                />
-
-                <Toggle
-                  title="Email Alerts"
-                  description="Receive important alerts through email."
-                  enabled={notifications.emailAlerts}
-                  onChange={(value) =>
-                    updateNotification("emailAlerts", value)
-                  }
-                />
-
-                <Toggle
-                  title="Booking Alerts"
-                  description="Get notified about new booking requests."
-                  enabled={notifications.bookingAlerts}
-                  onChange={(value) =>
-                    updateNotification("bookingAlerts", value)
-                  }
-                />
-
-                <Toggle
-                  title="Payment Alerts"
-                  description="Get notified about payments and billing updates."
-                  enabled={notifications.paymentAlerts}
-                  onChange={(value) =>
-                    updateNotification("paymentAlerts", value)
-                  }
-                />
-
-                <Toggle
-                  title="Operator Alerts"
-                  description="Receive updates about operator assignments and job status."
-                  enabled={notifications.operatorAlerts}
-                  onChange={(value) =>
-                    updateNotification("operatorAlerts", value)
-                  }
-                />
-              </div>
-
-              <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 p-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-5 text-gray-500">
-                  Preferences are stored locally. Email and push delivery
-                  need notification service integration.
-                </p>
-                <button
-                  type="button"
-                  onClick={saveNotifications}
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-yellow-500 px-5 py-3 text-sm font-semibold text-black hover:bg-yellow-600"
-                >
-                  <Save size={17} />
-                  Save Preferences
-                </button>
               </div>
             </div>
           )}
