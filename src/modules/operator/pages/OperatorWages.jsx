@@ -14,7 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api";
+const API = "https://bismiserver.onrender.com/api";
 
 const OperatorWages = () => {
   const [wageBills, setWageBills] = useState([]);

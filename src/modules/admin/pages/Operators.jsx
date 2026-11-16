@@ -18,7 +18,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api/admin";
+const API_URL = "https://bismiserver.onrender.com/api/admin";
 
 const emptyForm = {
   name: "",

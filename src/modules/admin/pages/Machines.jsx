@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Wrench, RefreshCw,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/machines";
+const API = "https://bismiserver.onrender.com/api/machines";
 
 const emptyForm = {
   name: "",

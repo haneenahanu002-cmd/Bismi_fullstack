@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/bills";
+const API = "https://bismiserver.onrender.com/api/bills";
 
 function formatDate(date) {
   if (!date) return "-";

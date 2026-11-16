@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api";
+const API = "https://bismiserver.onrender.com/api";
 
 const getToken = () => localStorage.getItem("token");
 

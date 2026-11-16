@@ -15,7 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/feedback";
+const API = "https://bismiserver.onrender.com/api/feedback";
 const ITEMS_PER_PAGE = 8;
 
 // Get authentication token

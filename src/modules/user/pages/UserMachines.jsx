@@ -15,7 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api/machines/user";
+const API_URL = "https://bismiserver.onrender.com/api/machines/user";
 
 const UserMachines = () => {
   const [machines, setMachines] = useState([]);

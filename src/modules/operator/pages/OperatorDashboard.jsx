@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const API_URL = "http://localhost:5000/api/bookings";
+const API_URL = "https://bismiserver.onrender.com/api/bookings";
 
 export default function OperatorDashboard() {
   const [jobs, setJobs] = useState([]);

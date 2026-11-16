@@ -18,7 +18,7 @@ import {
   KeyRound,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/auth";
+const API = "https://bismiserver.onrender.com/api/auth";
 
 export default function OpProfile() {
   const [profile, setProfile] = useState({

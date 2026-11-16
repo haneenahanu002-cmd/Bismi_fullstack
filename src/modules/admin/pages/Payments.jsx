@@ -17,7 +17,7 @@ import {
 
 import { toast } from "react-toastify";
 
-const API = "http://localhost:5000/api";
+const API = "https://bismiserver.onrender.com/api";
 const ITEMS_PER_PAGE = 8;
 
 const getToken = () => localStorage.getItem("token");

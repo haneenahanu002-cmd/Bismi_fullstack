@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 
-const API = "http://localhost:5000/api";
+const API = "https://bismiserver.onrender.com/api";
 
 const today = new Date().toISOString().split("T")[0];
 

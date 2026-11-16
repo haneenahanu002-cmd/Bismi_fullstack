@@ -16,8 +16,8 @@ import {
   ClipboardList,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api/bookings";
-const MACHINE_API = "http://localhost:5000/api/machines/available";
+const API_URL = "https://bismiserver.onrender.com/api/bookings";
+const MACHINE_API = "https://bismiserver.onrender.com/api/machines/available";
 
 const emptyForm = {
   machine: "",

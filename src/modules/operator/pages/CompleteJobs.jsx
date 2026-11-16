@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const API = "http://localhost:5000/api/bookings";
+const API = "https://bismiserver.onrender.com/api/bookings";
 
 function formatDate(date) {
   if (!date) return "-";

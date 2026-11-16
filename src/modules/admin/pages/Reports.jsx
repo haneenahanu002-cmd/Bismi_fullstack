@@ -14,7 +14,7 @@ import {
   Truck,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/reports";
+const API = "https://bismiserver.onrender.com/api/reports";
 
 const serviceColors = [
   "#2563eb",

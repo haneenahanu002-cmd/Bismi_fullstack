@@ -13,7 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/admin";
+const API = "https://bismiserver.onrender.com/api/admin";
 
 const MACHINE_OPTIONS = [
   "JCB 3DX",

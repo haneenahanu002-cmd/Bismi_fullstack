@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 const API = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: "https://bismiserver.onrender.com/api",
 });
 
 const getAuthConfig = () => ({

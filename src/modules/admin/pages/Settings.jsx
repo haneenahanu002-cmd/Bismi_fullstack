@@ -18,7 +18,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/settings";
+const API = "https://bismiserver.onrender.com/api/settings";
 
 const DEFAULT_PROFILE = {
   name: "",

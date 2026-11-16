@@ -20,7 +20,7 @@ import {
 
 import PageHeader from "../../../components/PageHeader";
 
-const API = "http://localhost:5000/api/dashboard/admin";
+const API = "https://bismiserver.onrender.com/api/dashboard/admin";
 
 const badgeColors = {
   Pending: "bg-amber-100 text-amber-700",
