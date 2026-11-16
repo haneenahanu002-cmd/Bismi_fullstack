@@ -64,12 +64,6 @@ const UserMachines = () => {
 
   useEffect(() => {
   fetchMachines();
-
-  const interval = setInterval(() => {
-    fetchMachines();
-  }, 5000);
-
-  return () => clearInterval(interval);
 }, []);
   // Machine counts
   const totalMachines = machines.length;

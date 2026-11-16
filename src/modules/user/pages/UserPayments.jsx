@@ -26,7 +26,8 @@ const formatDate = (date) => {
   if (!date) return "-";
 
   const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return date;
+
+  if (Number.isNaN(parsed.getTime())) return "-";
 
   return parsed.toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -75,6 +76,7 @@ const getPaymentStatus = (payment) => {
   if (!payment) return "Unpaid";
 
   if (payment.status === "PAID") return "Paid";
+
   if (payment.status === "FAILED") return "Failed";
 
   if (payment.paymentMethod === "CASH") {
@@ -99,6 +101,7 @@ export default function UserPayments() {
 
   const [selectedMethod, setSelectedMethod] = useState("UPI");
   const [processing, setProcessing] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -134,7 +137,7 @@ export default function UserPayments() {
   };
 
   // ==========================================
-  // FETCH APPROVED BILLS AND PAYMENT HISTORY
+  // FETCH BILLS AND PAYMENTS
   // ==========================================
 
   const fetchPayments = async (isRefresh = false) => {
@@ -160,8 +163,13 @@ export default function UserPayments() {
         paymentResponse.data ||
         [];
 
-      setBills(Array.isArray(approvedBills) ? approvedBills : []);
-      setPayments(Array.isArray(paymentList) ? paymentList : []);
+      setBills(
+        Array.isArray(approvedBills) ? approvedBills : []
+      );
+
+      setPayments(
+        Array.isArray(paymentList) ? paymentList : []
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -170,22 +178,8 @@ export default function UserPayments() {
     }
   };
 
-  useEffect(() => {
-    fetchPayments();
-
-    // If Cashfree redirects back to this page with order_id,
-    // verify the payment with the backend.
-    const params = new URLSearchParams(window.location.search);
-    const orderId = params.get("order_id");
-
-    if (orderId) {
-      verifyPayment(orderId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // ==========================================
-  // VERIFY CASHFREE PAYMENT
+  // CASHFREE PAYMENT VERIFICATION
   // ==========================================
 
   const verifyPayment = async (orderId) => {
@@ -207,7 +201,7 @@ export default function UserPayments() {
 
       await fetchPayments(true);
 
-      // Remove order_id from URL after verification
+      // Remove query parameters after verification
       window.history.replaceState(
         {},
         document.title,
@@ -215,8 +209,33 @@ export default function UserPayments() {
       );
     } catch (err) {
       setError(err.message);
+      setSuccess("");
     }
   };
+
+  // ==========================================
+  // INITIAL LOAD AND RETURN VERIFICATION
+  // ==========================================
+
+  useEffect(() => {
+    const initialize = async () => {
+      await fetchPayments();
+
+      const params = new URLSearchParams(
+        window.location.search
+      );
+
+      const orderId = params.get("order_id");
+
+      if (orderId) {
+        await verifyPayment(orderId);
+      }
+    };
+
+    initialize();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ==========================================
   // LOAD CASHFREE SDK
@@ -229,29 +248,41 @@ export default function UserPayments() {
         return;
       }
 
+      const scriptUrl =
+        "https://sdk.cashfree.com/js/v3/cashfree.js";
+
       const existingScript = document.querySelector(
-        'script[src="https://sdk.cashfree.com/js/v3/cashfree.js"]'
+        `script[src="${scriptUrl}"]`
       );
 
       if (existingScript) {
         existingScript.addEventListener("load", resolve, {
           once: true,
         });
+
         existingScript.addEventListener(
           "error",
-          () => reject(new Error("Unable to load Cashfree.")),
+          () => reject(
+            new Error("Unable to load Cashfree SDK.")
+          ),
           { once: true }
         );
+
         return;
       }
 
       const script = document.createElement("script");
-      script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+
+      script.src = scriptUrl;
       script.async = true;
 
       script.onload = resolve;
-      script.onerror = () =>
-        reject(new Error("Unable to load Cashfree SDK."));
+
+      script.onerror = () => {
+        reject(
+          new Error("Unable to load Cashfree SDK.")
+        );
+      };
 
       document.body.appendChild(script);
     });
@@ -263,8 +294,10 @@ export default function UserPayments() {
   const handlePayNow = (bill) => {
     setSelectedPayment(bill);
     setSelectedMethod("UPI");
+
     setError("");
     setSuccess("");
+
     setShowPaymentModal(true);
   };
 
@@ -273,13 +306,14 @@ export default function UserPayments() {
   // ==========================================
 
   const handleUpiPayment = async () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || processing) return;
 
     try {
       setProcessing(true);
       setError("");
+      setSuccess("");
 
-      // Create Cashfree order in backend
+      // Create order in backend
       const response = await apiRequest(
         `/payments/upi/create-order/${selectedPayment._id}`,
         {
@@ -288,25 +322,50 @@ export default function UserPayments() {
       );
 
       if (!response.paymentSessionId) {
-        throw new Error("Payment session was not created.");
+        throw new Error(
+          response.message ||
+          "Payment session was not created."
+        );
       }
 
+      // Load Cashfree SDK
       await loadCashfreeSDK();
 
+      if (!window.Cashfree) {
+        throw new Error(
+          "Cashfree SDK is not available."
+        );
+      }
+
+      const mode =
+        import.meta.env.VITE_CASHFREE_MODE === "production"
+          ? "production"
+          : "sandbox";
+
       const cashfree = window.Cashfree({
-        mode:
-          import.meta.env.VITE_CASHFREE_MODE === "production"
-            ? "production"
-            : "sandbox",
+        mode,
       });
 
-      // Cashfree hosted checkout
-      await cashfree.checkout({
+      // Open hosted checkout
+      const result = await cashfree.checkout({
         paymentSessionId: response.paymentSessionId,
         redirectTarget: "_self",
       });
+
+      if (result?.error) {
+        throw new Error(
+          result.error.message ||
+          "Unable to complete payment."
+        );
+      }
+
+      // Checkout normally redirects the browser.
+      // If it does not redirect, allow the user to retry.
     } catch (err) {
-      setError(err.message || "Unable to start UPI payment.");
+      setError(
+        err.message || "Unable to start UPI payment."
+      );
+
       setProcessing(false);
     }
   };
@@ -316,7 +375,7 @@ export default function UserPayments() {
   // ==========================================
 
   const handleCashPayment = async () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || processing) return;
 
     try {
       setProcessing(true);
@@ -334,7 +393,7 @@ export default function UserPayments() {
 
       setSuccess(
         response.message ||
-          "Cash payment request submitted successfully."
+        "Cash payment request submitted successfully."
       );
 
       setShowPaymentModal(false);
@@ -349,21 +408,22 @@ export default function UserPayments() {
   };
 
   // ==========================================
-  // COMBINE APPROVED BILLS + PAYMENT RECORDS
+  // COMBINE BILLS AND PAYMENTS
   // ==========================================
 
   const paymentRows = useMemo(() => {
     return bills.map((bill) => {
       const payment = payments
-        .filter(
-          (item) =>
-            String(
-              item.billId?._id || item.billId
-            ) === String(bill._id)
-        )
+        .filter((item) => {
+          const billId =
+            item.billId?._id || item.billId;
+
+          return String(billId) === String(bill._id);
+        })
         .sort(
           (a, b) =>
-            new Date(b.createdAt) - new Date(a.createdAt)
+            new Date(b.createdAt) -
+            new Date(a.createdAt)
         )[0];
 
       const booking = getBookingInfo(bill);
@@ -371,19 +431,31 @@ export default function UserPayments() {
       return {
         ...bill,
         payment,
-        id: payment?.orderId || String(bill._id).slice(-8),
+
+        id:
+          payment?.orderId ||
+          String(bill._id).slice(-8),
+
         bookingId: booking.bookingId,
         machine: booking.machine,
         work: booking.work,
+
         date: bill.billDate || bill.createdAt,
+
         amount: Number(
-          bill.adminFinalAmount ?? bill.totalAmount ?? 0
+          bill.adminFinalAmount ??
+          bill.totalAmount ??
+          0
         ),
-        paymentMethod: payment?.paymentMethod || "-",
+
+        paymentMethod:
+          payment?.paymentMethod || "-",
+
         transactionId:
           payment?.cfPaymentId ||
           payment?.orderId ||
           "-",
+
         status: getPaymentStatus(payment),
       };
     });
@@ -398,10 +470,18 @@ export default function UserPayments() {
 
     return paymentRows.filter((payment) => {
       const matchesSearch =
-        payment.id.toLowerCase().includes(searchValue) ||
-        payment.bookingId.toLowerCase().includes(searchValue) ||
-        String(payment.machine).toLowerCase().includes(searchValue) ||
-        String(payment.work).toLowerCase().includes(searchValue);
+        String(payment.id)
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(payment.bookingId)
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(payment.machine)
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(payment.work)
+          .toLowerCase()
+          .includes(searchValue);
 
       const matchesStatus =
         statusFilter === "All" ||
@@ -458,7 +538,11 @@ export default function UserPayments() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="mx-auto animate-spin text-yellow-500" size={32} />
+          <RefreshCw
+            className="mx-auto animate-spin text-yellow-500"
+            size={32}
+          />
+
           <p className="mt-3 text-sm text-gray-500">
             Loading payments...
           </p>
@@ -469,12 +553,15 @@ export default function UserPayments() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
+
       {/* HEADER */}
+
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-[#0B1D2B] sm:text-3xl">
             Payments
           </h1>
+
           <p className="mt-1 text-sm text-gray-500">
             View your approved bills and payment history
           </p>
@@ -489,14 +576,17 @@ export default function UserPayments() {
             size={16}
             className={refreshing ? "animate-spin" : ""}
           />
+
           Refresh
         </button>
       </div>
 
       {/* ALERTS */}
+
       {error && (
         <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <span>{error}</span>
+
           <button onClick={() => setError("")}>
             <X size={18} />
           </button>
@@ -506,6 +596,7 @@ export default function UserPayments() {
       {success && (
         <div className="mb-5 flex items-center justify-between rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
           <span>{success}</span>
+
           <button onClick={() => setSuccess("")}>
             <X size={18} />
           </button>
@@ -513,6 +604,7 @@ export default function UserPayments() {
       )}
 
       {/* SUMMARY CARDS */}
+
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <SummaryCard
           label="Total Amount"
@@ -538,11 +630,15 @@ export default function UserPayments() {
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Transactions</p>
+              <p className="text-sm text-gray-500">
+                Transactions
+              </p>
+
               <h2 className="mt-2 text-2xl font-bold text-[#0B1D2B]">
                 {paymentRows.length}
               </h2>
             </div>
+
             <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
               <ReceiptText size={22} />
             </div>
@@ -551,12 +647,15 @@ export default function UserPayments() {
       </div>
 
       {/* PAYMENT HISTORY */}
+
       <div className="rounded-2xl bg-white shadow-sm">
+
         <div className="flex flex-col gap-4 border-b border-gray-100 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-[#0B1D2B]">
               My Bills & Payment History
             </h2>
+
             <p className="mt-1 text-sm text-gray-500">
               Pay your admin-approved bills
             </p>
@@ -568,6 +667,7 @@ export default function UserPayments() {
                 size={18}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               />
+
               <input
                 type="text"
                 placeholder="Search payments..."
@@ -595,6 +695,7 @@ export default function UserPayments() {
         </div>
 
         {/* DESKTOP TABLE */}
+
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[1000px]">
             <thead>
@@ -635,14 +736,22 @@ export default function UserPayments() {
 
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <Truck size={17} className="text-yellow-600" />
+                      <Truck
+                        size={17}
+                        className="text-yellow-600"
+                      />
+
                       {payment.machine}
                     </div>
                   </td>
 
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <CalendarDays size={15} className="text-gray-400" />
+                      <CalendarDays
+                        size={15}
+                        className="text-gray-400"
+                      />
+
                       {formatDate(payment.date)}
                     </div>
                   </td>
@@ -690,6 +799,7 @@ export default function UserPayments() {
         </div>
 
         {/* MOBILE CARDS */}
+
         <div className="space-y-4 p-4 md:hidden">
           {filteredPayments.map((payment) => (
             <div
@@ -701,6 +811,7 @@ export default function UserPayments() {
                   <p className="font-bold text-[#0B1D2B]">
                     {payment.id}
                   </p>
+
                   <p className="mt-1 text-xs text-gray-400">
                     Booking: {payment.bookingId}
                   </p>
@@ -714,7 +825,10 @@ export default function UserPayments() {
 
               <div className="mt-4 space-y-2 text-sm text-gray-600">
                 <p className="flex items-center gap-2">
-                  <Truck size={16} className="text-yellow-600" />
+                  <Truck
+                    size={16}
+                    className="text-yellow-600"
+                  />
                   {payment.machine}
                 </p>
 
@@ -757,15 +871,18 @@ export default function UserPayments() {
         </div>
 
         {/* EMPTY STATE */}
+
         {filteredPayments.length === 0 && (
           <div className="px-5 py-12 text-center">
             <CreditCard
               size={42}
               className="mx-auto text-gray-300"
             />
+
             <h3 className="mt-3 font-semibold text-gray-700">
               No approved bills found
             </h3>
+
             <p className="mt-1 text-sm text-gray-400">
               Bills will appear here after admin approval.
             </p>
@@ -783,15 +900,18 @@ export default function UserPayments() {
         </div>
       </div>
 
-      {/* PAYMENT DETAILS MODAL */}
+      {/* BILL DETAILS MODAL */}
+
       {selectedPayment && !showPaymentModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+
             <div className="flex items-center justify-between border-b border-gray-100 p-5">
               <div>
                 <h2 className="text-xl font-bold text-[#0B1D2B]">
                   Bill Details
                 </h2>
+
                 <p className="mt-1 text-sm text-gray-500">
                   {selectedPayment.id}
                 </p>
@@ -810,33 +930,42 @@ export default function UserPayments() {
                 label="Booking ID"
                 value={selectedPayment.bookingId}
               />
+
               <PaymentDetail
                 label="Machine"
                 value={selectedPayment.machine}
               />
+
               <PaymentDetail
                 label="Work Type"
                 value={selectedPayment.work}
               />
+
               <PaymentDetail
                 label="Bill Date"
                 value={formatDate(selectedPayment.date)}
               />
+
               <PaymentDetail
                 label="Amount"
                 value={`₹${formatAmount(selectedPayment.amount)}`}
               />
+
               <PaymentDetail
                 label="Payment Method"
                 value={selectedPayment.paymentMethod}
               />
+
               <PaymentDetail
                 label="Transaction / Order ID"
                 value={selectedPayment.transactionId}
               />
 
               <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-xs text-gray-400">Status</p>
+                <p className="text-xs text-gray-400">
+                  Status
+                </p>
+
                 <div className="mt-2">
                   <StatusBadge
                     status={selectedPayment.status}
@@ -869,14 +998,17 @@ export default function UserPayments() {
       )}
 
       {/* PAYMENT METHOD MODAL */}
+
       {showPaymentModal && selectedPayment && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+
             <div className="flex items-center justify-between border-b border-gray-100 p-5">
               <div>
                 <h2 className="text-xl font-bold text-[#0B1D2B]">
                   Make Payment
                 </h2>
+
                 <p className="mt-1 text-sm text-gray-500">
                   Booking: {selectedPayment.bookingId}
                 </p>
@@ -900,9 +1032,11 @@ export default function UserPayments() {
                 <p className="text-sm text-gray-300">
                   Amount to Pay
                 </p>
+
                 <h3 className="mt-2 text-3xl font-bold text-yellow-400">
                   ₹{formatAmount(selectedPayment.amount)}
                 </h3>
+
                 <p className="mt-2 text-xs text-gray-400">
                   {selectedPayment.machine} • {selectedPayment.work}
                 </p>
@@ -914,6 +1048,9 @@ export default function UserPayments() {
                 </p>
 
                 <div className="grid grid-cols-1 gap-3">
+
+                  {/* UPI */}
+
                   <button
                     type="button"
                     onClick={() => setSelectedMethod("UPI")}
@@ -926,15 +1063,19 @@ export default function UserPayments() {
                     <div className="rounded-lg bg-yellow-400 p-2 text-[#0B1D2B]">
                       <CreditCard size={20} />
                     </div>
+
                     <div>
                       <p className="text-sm font-semibold text-[#0B1D2B]">
                         UPI
                       </p>
+
                       <p className="text-xs text-gray-500">
                         Google Pay / PhonePe / Paytm
                       </p>
                     </div>
                   </button>
+
+                  {/* CASH */}
 
                   <button
                     type="button"
@@ -948,10 +1089,12 @@ export default function UserPayments() {
                     <div className="rounded-lg bg-gray-100 p-2 text-gray-600">
                       <Banknote size={20} />
                     </div>
+
                     <div>
                       <p className="text-sm font-semibold text-[#0B1D2B]">
                         Cash
                       </p>
+
                       <p className="text-xs text-gray-500">
                         Pay cash and request confirmation
                       </p>
@@ -1026,11 +1169,15 @@ function SummaryCard({ label, amount, icon, color }) {
     <div className="rounded-2xl bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-gray-500">{label}</p>
+          <p className="text-sm text-gray-500">
+            {label}
+          </p>
+
           <h2 className="mt-2 text-xl font-bold text-[#0B1D2B] sm:text-2xl">
             ₹{formatAmount(amount)}
           </h2>
         </div>
+
         <div className={`rounded-xl p-3 ${colors[color]}`}>
           {icon}
         </div>
@@ -1062,7 +1209,10 @@ function StatusBadge({ status, getStatusStyle }) {
 function PaymentDetail({ label, value }) {
   return (
     <div className="rounded-xl bg-gray-50 p-4">
-      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-xs text-gray-400">
+        {label}
+      </p>
+
       <p className="mt-1 break-words font-semibold text-[#0B1D2B]">
         {value || "-"}
       </p>
