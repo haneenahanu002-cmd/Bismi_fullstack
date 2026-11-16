@@ -168,7 +168,7 @@ export default function Home() {
               <div className="relative h-[410px] overflow-hidden rounded-2xl">
 
                 <img
-                  src="\public\hero-excavator.jpg"
+                  src="/hero-excavator.jpg"
                   alt="Bismi Earth Movers JCB Machine"
                   className="h-full w-full object-cover"
                 />
