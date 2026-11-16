@@ -33,7 +33,7 @@ export default function OperatorDashboard() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
-    window.location.replace("http://localhost:5173/");
+    window.location.replace("https://bismiserver.onrender.com/api");
   };
 
   // GET TOKEN
