@@ -2,9 +2,11 @@ import { useEffect, useState, useRef } from "react";
 import { MessageSquare, Send, ArrowLeft, Search, Paperclip, MapPin, Users, Plus, Trash2, Image as ImageIcon, FileText, Radio, X } from "lucide-react";
 import { messageAPI } from "../services/messageAPI";
 import { getSocket } from "../services/socket";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -20,6 +22,120 @@ function LocationPicker({ onSelect }) {
     },
   });
   return null;
+}
+
+function GoogleMapPicker({ onSelect, initial }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const [address, setAddress] = useState("");
+
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) return;
+    if (window.google && window.google.maps) {
+      initMap();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.async = true;
+    script.onload = initMap;
+    document.head.appendChild(script);
+
+    function initMap() {
+      const center = initial || { lat: 10.8505, lng: 76.2711 };
+      const map = new window.google.maps.Map(mapRef.current, {
+        center,
+        zoom: 12,
+      });
+      mapInstanceRef.current = map;
+
+      const marker = new window.google.maps.Marker({
+        position: center,
+        map,
+        draggable: true,
+      });
+      markerRef.current = marker;
+
+      const geocoder = new window.google.maps.Geocoder();
+
+      const updateAddress = (pos) => {
+        geocoder.geocode({ location: pos }, (results, status) => {
+          if (status === "OK" && results && results[0]) {
+            setAddress(results[0].formatted_address);
+            onSelect({ lat: pos.lat, lng: pos.lng, address: results[0].formatted_address });
+          } else {
+            setAddress(`${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`);
+            onSelect({ lat: pos.lat, lng: pos.lng, address: "" });
+          }
+        });
+      };
+
+      updateAddress(center);
+
+      map.addListener("click", (e) => {
+        const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        marker.setPosition(pos);
+        updateAddress(pos);
+      });
+
+      marker.addListener("dragend", () => {
+        const pos = marker.getPosition();
+        updateAddress({ lat: pos.lat(), lng: pos.lng() });
+      });
+
+      // Autocomplete
+      if (searchInputRef.current) {
+        const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
+          fields: ["formatted_address", "geometry", "name"],
+        });
+        autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          if (!place.geometry) return;
+          const pos = {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng(),
+          };
+          map.setCenter(pos);
+          map.setZoom(16);
+          marker.setPosition(pos);
+          const addr = place.formatted_address || place.name;
+          setAddress(addr);
+          onSelect({ lat: pos.lat, lng: pos.lng, address: addr });
+        });
+      }
+    }
+  }, []);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      mapInstanceRef.current?.setCenter(p);
+      mapInstanceRef.current?.setZoom(16);
+      markerRef.current?.setPosition(p);
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: p }, (results, status) => {
+        if (status === "OK" && results && results[0]) {
+          setAddress(results[0].formatted_address);
+          onSelect({ lat: p.lat, lng: p.lng, address: results[0].formatted_address });
+        } else {
+          setAddress(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+          onSelect({ lat: p.lat, lng: p.lng, address: "" });
+        }
+      });
+    });
+  };
+
+  return (
+    <div>
+      <input ref={searchInputRef} placeholder="Search for a place" className="mb-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+      <div ref={mapRef} style={{ height: 320, width: "100%" }} className="rounded-xl" />
+      <p className="mt-2 text-xs text-gray-600">{address}</p>
+      <button onClick={useCurrentLocation} className="mt-2 rounded-xl border border-gray-200 px-3 py-2 text-sm">My Current Location</button>
+    </div>
+  );
 }
 
 function getCurrentUserId() {
@@ -216,6 +332,7 @@ export default function Messages() {
             formData.append("locationLatitude", location.lat);
             formData.append("locationLongitude", location.lng);
             formData.append("locationUrl", location.url);
+            formData.append("locationAddress", location.address || "");
             formData.append("locationType", location.type || "current");
             if (location.type === "live") {
               formData.append("isLive", "true");
@@ -249,6 +366,7 @@ export default function Messages() {
           formData.append("locationLatitude", location.lat);
           formData.append("locationLongitude", location.lng);
           formData.append("locationUrl", location.url);
+          formData.append("locationAddress", location.address || "");
           formData.append("locationType", location.type || "current");
           if (location.type === "live") {
             formData.append("isLive", "true");
@@ -277,9 +395,20 @@ export default function Messages() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, type: "current" });
-        setLocationMode("current");
-        setShowLocationMenu(false);
+        const url = `https://www.google.com/maps?q=${lat},${lng}`;
+        if (window.google?.maps?.Geocoder) {
+          const geocoder = new window.google.maps.Geocoder();
+          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            const address = status === "OK" && results?.[0] ? results[0].formatted_address : "";
+            setLocation({ lat, lng, url, address, type: "current" });
+            setLocationMode("current");
+            setShowLocationMenu(false);
+          });
+        } else {
+          setLocation({ lat, lng, url, address: "", type: "current" });
+          setLocationMode("current");
+          setShowLocationMenu(false);
+        }
       },
       () => alert("Unable to get location")
     );
@@ -473,6 +602,7 @@ export default function Messages() {
                           {msg.location.isLive && (
                             <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>
                           )}
+                          {msg.location.address && <p className="mb-1 text-xs text-gray-600">{msg.location.address}</p>}
                           <div className="h-40 w-full overflow-hidden rounded-lg">
                             <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
                               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -539,6 +669,7 @@ export default function Messages() {
                     {msg.messageType === "location" && msg.location?.url && (
                       <div className="mb-2">
                         {msg.location.isLive && <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>}
+                        {msg.location.address && <p className="mb-1 text-xs text-gray-600">{msg.location.address}</p>}
                         <div className="h-40 w-full overflow-hidden rounded-lg">
                           <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -635,18 +766,17 @@ export default function Messages() {
               <h3 className="text-lg font-bold text-[#0B1D2B]">Choose Location</h3>
               <button onClick={() => setShowMapPicker(false)}><X size={20} /></button>
             </div>
-            <div className="h-72 w-full overflow-hidden rounded-xl">
-              <MapContainer center={pickedCoords || [10.8505, 76.2711]} zoom={10} style={{ height: "100%", width: "100%" }}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <LocationPicker onSelect={setPickedCoords} />
-                {pickedCoords && <Marker position={pickedCoords} />}
-              </MapContainer>
+            <div className="h-72 w-full overflow-hidden rounded-xl border border-gray-200">
+              <GoogleMapPicker
+                initial={pickedCoords ? { lat: pickedCoords[0], lng: pickedCoords[1] } : undefined}
+                onSelect={(coords) => setPickedCoords([coords.lat, coords.lng, coords.address])}
+              />
             </div>
             <button
               onClick={() => {
                 if (!pickedCoords) return alert("Select a location");
-                const [lat, lng] = pickedCoords;
-                setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, type: "picked" });
+                const [lat, lng, address] = pickedCoords;
+                setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, address: address || "", type: "picked" });
                 setShowMapPicker(false);
               }}
               className="mt-4 w-full rounded-xl bg-yellow-400 py-2 text-sm font-semibold text-[#0B1D2B]"
