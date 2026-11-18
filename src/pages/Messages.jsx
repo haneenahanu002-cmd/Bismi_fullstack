@@ -32,6 +32,7 @@ function LeafletLocationPicker({ onSelect, initial }) {
   const debounceRef = useRef(null);
 
   const reverseGeocode = async (lat, lng) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     try {
       const res = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
       const data = await res.json();
@@ -89,8 +90,10 @@ function LeafletLocationPicker({ onSelect, initial }) {
   const MapClick = () => {
     useMapEvents({
       click(e) {
-        const lat = e.latlng.lat;
-        const lng = e.latlng.lng;
+        if (!e?.latlng) return;
+        const lat = Number(e.latlng.lat);
+        const lng = Number(e.latlng.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         setPosition([lat, lng]);
         reverseGeocode(lat, lng);
       },
@@ -134,9 +137,13 @@ function LeafletLocationPicker({ onSelect, initial }) {
             draggable={true}
             eventHandlers={{
               dragend: (e) => {
-                const pos = e.target.getLatLng();
-                setPosition([pos.lat, pos.lng]);
-                reverseGeocode(pos.lat, pos.lng);
+                const pos = e?.target?.getLatLng?.();
+                if (!pos) return;
+                const lat = Number(pos.lat);
+                const lng = Number(pos.lng);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                setPosition([lat, lng]);
+                reverseGeocode(lat, lng);
               },
             }}
           />
