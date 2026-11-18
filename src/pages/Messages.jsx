@@ -182,7 +182,9 @@ export default function Messages() {
   const [groupName, setGroupName] = useState("");
   const [groupDesc, setGroupDesc] = useState("");
   const [groupMembers, setGroupMembers] = useState([]);
+  const [groupSearch, setGroupSearch] = useState("");
   const [search, setSearch] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState(null);
   const [location, setLocation] = useState(null);
@@ -320,6 +322,7 @@ export default function Messages() {
 
   const createGroup = async () => {
     if (!groupName.trim()) return alert("Group name required");
+    if (groupMembers.length === 0) return alert("Select at least one member");
     try {
       const formData = new FormData();
       formData.append("name", groupName);
@@ -521,6 +524,10 @@ export default function Messages() {
   }, []);
 
   const currentUserId = getCurrentUserId();
+  const tokenPayload = (() => {
+    try { return JSON.parse(atob(localStorage.getItem("token").split(".")[1])); } catch { return {}; }
+  })();
+  const isAdmin = tokenPayload.role === "admin";
 
   const filteredConversations = conversations.filter((c) =>
     (c.participant?.username || "").toLowerCase().includes(search.toLowerCase())
@@ -552,11 +559,44 @@ export default function Messages() {
         </div>
 
         <div className="p-3">
+          {isAdmin && (
+            <div className="relative mb-2">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} placeholder="Search customers/operators..." className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none" />
+              {adminSearch && (
+                <button onClick={() => setAdminSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search conversations..." className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none" />
           </div>
         </div>
+
+        {isAdmin && adminSearch && (
+          <div className="border-b border-gray-200 p-2">
+            <p className="mb-1 text-xs font-semibold text-gray-500">Search results</p>
+            {participants
+              .filter((p) => (p.username || "").toLowerCase().includes(adminSearch.toLowerCase()))
+              .map((p) => (
+                <button key={p._id} onClick={() => { startChat(p._id); setAdminSearch(""); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-yellow-50">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0B1D2B] text-xs font-bold text-white">
+                    {(p.username || "?").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0B1D2B]">{p.username}</p>
+                    <p className="text-xs text-gray-500">{p.role === "user" ? "Customer" : p.role}</p>
+                  </div>
+                </button>
+              ))}
+            {participants.filter((p) => (p.username || "").toLowerCase().includes(adminSearch.toLowerCase())).length === 0 && (
+              <p className="text-sm text-gray-400">No users found.</p>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto">
           {tab === "direct" && filteredConversations.map((conv) => (
@@ -778,7 +818,7 @@ export default function Messages() {
 
       {/* Map picker */}
       {showMapPicker && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-lg font-bold text-[#0B1D2B]">Choose Location</h3>
@@ -863,16 +903,34 @@ export default function Messages() {
             <h3 className="mb-3 text-lg font-bold text-[#0B1D2B]">Create Group</h3>
             <input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Group name" className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             <textarea value={groupDesc} onChange={(e) => setGroupDesc(e.target.value)} placeholder="Description" className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" rows={2} />
+            <input value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="Search customers/operators..." className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+            {groupMembers.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {groupMembers.map((id) => {
+                  const p = participants.find((x) => x._id === id);
+                  return (
+                    <span key={id} className="flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-[#0B1D2B]">
+                      {p?.username || "User"}
+                      <button onClick={() => setGroupMembers((prev) => prev.filter((x) => x !== id))}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="max-h-48 space-y-2 overflow-y-auto">
-              {participants.map((p) => (
-                <label key={p._id} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={groupMembers.includes(p._id)} onChange={(e) => {
-                    if (e.target.checked) setGroupMembers((prev) => [...prev, p._id]);
-                    else setGroupMembers((prev) => prev.filter((id) => id !== p._id));
-                  }} />
-                  {p.username} ({p.role})
-                </label>
-              ))}
+              {participants
+                .filter((p) => (p.username || "").toLowerCase().includes(groupSearch.toLowerCase()))
+                .map((p) => (
+                  <label key={p._id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={groupMembers.includes(p._id)} onChange={(e) => {
+                      if (e.target.checked) setGroupMembers((prev) => [...prev, p._id]);
+                      else setGroupMembers((prev) => prev.filter((id) => id !== p._id));
+                    }} />
+                    {p.username} ({p.role === "user" ? "Customer" : p.role})
+                  </label>
+                ))}
             </div>
             <div className="mt-4 flex gap-2">
               <button onClick={() => setShowNewGroup(false)} className="flex-1 rounded-xl border border-gray-200 py-2 text-sm">Cancel</button>
