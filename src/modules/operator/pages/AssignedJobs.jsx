@@ -124,21 +124,44 @@ export default function AssignedJobs() {
     }
   };
 
-  // UI-only reject for now. No operator reject API is connected yet.
-  const handleReject = (job) => {
+  const handleReject = async (job) => {
+    const reason = window.prompt("Reason for rejection (optional):");
+    if (reason === null) return;
+
     const confirmed = window.confirm(
       "Are you sure you want to reject this job?"
     );
 
     if (!confirmed) return;
 
-    setJobs((previous) =>
-      previous.filter((item) => item._id !== job._id)
-    );
+    try {
+      const token = localStorage.getItem("operatorToken") || localStorage.getItem("token");
+      const response = await fetch(
+        `${API}/operator/assigned-jobs/${job._id}/reject`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        }
+      );
 
-    window.alert(
-      "Removed from this list only. Rejection is not saved in the database yet."
-    );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to reject job.");
+      }
+
+      setJobs((previous) =>
+        previous.filter((item) => item._id !== job._id)
+      );
+
+      alert("Job rejected successfully.");
+    } catch (err) {
+      alert(err.message || "Failed to reject job.");
+    }
   };
 
   const filteredJobs = jobs.filter((job) => {

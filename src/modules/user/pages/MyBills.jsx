@@ -46,6 +46,7 @@ export default function MyBills() {
   const [selectedBill, setSelectedBill] = useState(null);
 
   const [bills, setBills] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -60,21 +61,32 @@ export default function MyBills() {
         throw new Error("Please login to view your bills.");
       }
 
-      const response = await fetch(`${API}/user/my-bills`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+      const [billResponse, paymentResponse] = await Promise.all([
+        fetch(`${API}/user/my-bills`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }),
+        fetch("https://bismiserver.onrender.com/api/payments/my-payments", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }),
+      ]);
 
-      const data = await response.json();
+      const billData = await billResponse.json();
+      const paymentData = await paymentResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to fetch bills.");
+      if (!billResponse.ok) {
+        throw new Error(billData.message || "Failed to fetch bills.");
       }
 
-      setBills(Array.isArray(data.bills) ? data.bills : []);
+      setBills(Array.isArray(billData.bills) ? billData.bills : []);
+      setPayments(Array.isArray(paymentData.payments) ? paymentData.payments : []);
     } catch (err) {
       console.error("Fetch bills error:", err);
       setError(err.message || "Something went wrong.");
@@ -90,6 +102,16 @@ export default function MyBills() {
   // Convert MongoDB bill data into display data
   const formattedBills = useMemo(() => {
     return bills.map((bill) => {
+      const relatedPayment = payments
+        .filter((p) => String(p.billId?._id || p.billId) === String(bill._id))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+
+      const paymentStatus =
+        relatedPayment?.status === "PAID"
+          ? "Paid"
+          : relatedPayment?.status === "FAILED"
+          ? "Failed"
+          : "Pending";
       const booking = bill.bookingId || {};
 
       const finalAmount =
@@ -116,11 +138,11 @@ export default function MyBills() {
         tipper: Number(bill.tipper || 0),
         batta: Number(bill.batta || 0),
         total: finalAmount,
-        status: bill.paymentStatus || "Pending",
+        status: paymentStatus,
         operator: bill.operatorId?.username || "-",
       };
     });
-  }, [bills]);
+  }, [bills, payments]);
 
   const filteredBills = formattedBills.filter((bill) => {
     const text = search.toLowerCase().trim();
@@ -155,6 +177,10 @@ export default function MyBills() {
   const getStatusStyle = (status) => {
     if (status === "Paid") {
       return "bg-green-100 text-green-700";
+    }
+
+    if (status === "Failed") {
+      return "bg-red-100 text-red-700";
     }
 
     return "bg-yellow-100 text-yellow-700";
