@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { MessageSquare, Send, ArrowLeft, Search, Paperclip, MapPin, Users, Plus, Trash2, Image as ImageIcon, FileText, Radio, X } from "lucide-react";
 import { messageAPI } from "../services/messageAPI";
 import { getSocket } from "../services/socket";
-import { MapContainer, TileLayer, Marker } from "react-leaflet";
+
+import { MapContainer, TileLayer, Marker,  useMapEvents, } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -790,11 +791,39 @@ export default function Messages() {
               />
             </div>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!pickedCoords) return alert("Select a location");
                 const [lat, lng, address] = pickedCoords;
-                setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, address: address || "", type: "picked" });
+                const loc = { lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, address: address || "", type: "picked" };
+                setLocation(loc);
                 setShowMapPicker(false);
+                setPickedCoords(null);
+                // send immediately
+                try {
+                  const formData = new FormData();
+                  formData.append("content", "Location");
+                  formData.append("locationLatitude", lat);
+                  formData.append("locationLongitude", lng);
+                  formData.append("locationUrl", loc.url);
+                  formData.append("locationAddress", loc.address);
+                  formData.append("locationType", "picked");
+                  const endpoint = activeConversation
+                    ? `https://bismiserver.onrender.com/api/messages/${activeConversation._id}`
+                    : `https://bismiserver.onrender.com/api/messages/groups/${activeGroup._id}/messages`;
+                  const res = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                    body: formData,
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.message);
+                  if (activeConversation) setMessages((prev) => [...prev, data.message]);
+                  else setGroupMessages((prev) => [...prev, data.message]);
+                  setLocation(null);
+                } catch (err) {
+                  setShowMapPicker(true);
+                  alert(err.message);
+                }
               }}
               className="mt-4 w-full rounded-xl bg-yellow-400 py-2 text-sm font-semibold text-[#0B1D2B]"
             >
