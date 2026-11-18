@@ -42,6 +42,8 @@ import MyBills from "./modules/user/pages/MyBills";
 import UserFeedback from "./modules/user/pages/UserFeedback";
 import UserProfile from "./modules/user/pages/UserProfile";
 import PaymentStatus from "./modules/user/pages/PaymentStatus";
+import Messages from "./pages/Messages";
+import BismiAI from "./pages/BismiAI";
 
 export default function App() {
   return (
@@ -151,6 +153,18 @@ export default function App() {
             element={<Feedback />}
           />
 
+          {/* Messages */}
+          <Route
+            path="messages"
+            element={<Messages />}
+          />
+
+          {/* Bismi AI */}
+          <Route
+            path="bismi-ai"
+            element={<BismiAI />}
+          />
+
           {/* Profile */}
           <Route
             path="profile"
@@ -223,6 +237,18 @@ export default function App() {
             element={<PaymentStatus />}
           />
 
+          {/* Messages */}
+          <Route
+            path="messages"
+            element={<Messages />}
+          />
+
+          {/* Bismi AI */}
+          <Route
+            path="bismi-ai"
+            element={<BismiAI />}
+          />
+
         </Route>
 
 
@@ -277,6 +303,18 @@ export default function App() {
           <Route
             path="opprofile"
             element={<OpProfile />}
+          />
+
+          {/* Messages */}
+          <Route
+            path="messages"
+            element={<Messages />}
+          />
+
+          {/* Bismi AI */}
+          <Route
+            path="bismi-ai"
+            element={<BismiAI />}
           />
           <>
   

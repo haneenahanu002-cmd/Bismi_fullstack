@@ -17,6 +17,8 @@ import {
   History,
   UserRound,
   FilePlus2,
+  MessageSquare,
+  Bot,
 } from 'lucide-react'
 
 export const navigation = {
@@ -33,6 +35,8 @@ export const navigation = {
     { label: 'Reports', path: '/admin/reports', icon: ChartNoAxesCombined },
 
     { label: 'Feedback', path: '/admin/feedback', icon: Star },
+    { label: 'Messages', path: '/admin/messages', icon: MessageSquare },
+    { label: 'Bismi AI', path: '/admin/bismi-ai', icon: Bot },
     { label: 'Settings', path: '/admin/settings', icon: Settings },
   ],
 
@@ -42,6 +46,8 @@ export const navigation = {
     { label: 'User Machines', path: '/user/UserMachines', icon: Truck },
     { label: 'User Payments', path: '/user/UserPayments', icon: Wallet },
     { label: 'My Bills', path: '/user/MyBills', icon: ReceiptText },
+    { label: 'Messages', path: '/user/messages', icon: MessageSquare },
+    { label: 'Bismi AI', path: '/user/bismi-ai', icon: Bot },
     { label: 'Feedback', path: '/user/UserFeedback', icon: Star },
     { label: 'My Profile', path: '/user/UserProfile', icon: UserRound },
   ],
@@ -77,6 +83,16 @@ export const navigation = {
       label: "Work History",
       path: "/operator/WorkHistory",
       icon: History,
+    },
+    {
+      label: "Messages",
+      path: "/operator/messages",
+      icon: MessageSquare,
+    },
+    {
+      label: "Bismi AI",
+      path: "/operator/bismi-ai",
+      icon: Bot,
     },
     {
       label: "My Profile",
