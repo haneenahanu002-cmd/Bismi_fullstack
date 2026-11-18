@@ -725,6 +725,73 @@ function BookingDetails({
               </div>
             )}
 
+            {booking.operatorDecision === "Rejected" &&
+              booking.status === "Assigned" && (
+                <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5">
+                  <p className="font-semibold text-yellow-800">
+                    Operator Rejected
+                  </p>
+                  <p className="mt-2 text-sm text-yellow-800">
+                    Reassign this booking to another operator.
+                  </p>
+
+                  <select
+                    value={operatorId}
+                    onChange={(e) => setOperatorId(e.target.value)}
+                    className="mt-3 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">Choose an operator</option>
+                    {operators.map((operator) => (
+                      <option
+                        key={operator._id || operator.id}
+                        value={operator._id || operator.id}
+                      >
+                        {operator.username}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    disabled={actionLoading || !operatorId}
+                    onClick={async () => {
+                      try {
+                        setActionLoading(true);
+                        const token = localStorage.getItem("token");
+                        const response = await fetch(
+                          `https://bismiserver.onrender.com/api/admin/bookings/${booking._id}/reassign`,
+                          {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({
+                              operatorId,
+                              machine: booking.machine,
+                            }),
+                          }
+                        );
+                        const data = await response.json();
+                        if (!response.ok) {
+                          throw new Error(
+                            data.message || "Failed to reassign."
+                          );
+                        }
+                        setMessage("Booking reassigned successfully.");
+                        fetchBookings();
+                      } catch (err) {
+                        setMessage(err.message);
+                      } finally {
+                        setActionLoading(false);
+                      }
+                    }}
+                    className="mt-3 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Reassign Operator
+                  </button>
+                </div>
+              )}
+
             {message && (
               <div className="rounded-lg border bg-white p-3 text-sm text-gray-700">
                 {message}
