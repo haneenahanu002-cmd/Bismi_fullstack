@@ -167,12 +167,12 @@ export default function Messages() {
               }`}
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0B1D2B] text-sm font-bold text-white">
-                {(conv.participant?.username || "?").slice(0, 2).toUpperCase()}
+                {conv.participant?.role === "admin" ? "BA" : (conv.participant?.username || "?").slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
                   <p className="truncate font-semibold text-[#0B1D2B]">
-                    {conv.participant?.username || "User"}
+                    {conv.participant?.role === "admin" ? "Bismi Earth Movers Admin" : conv.participant?.username || "User"}
                   </p>
                   {conv.unreadCount > 0 && (
                     <span className="rounded-full bg-yellow-400 px-2 py-0.5 text-xs font-bold text-[#0B1D2B]">
@@ -181,7 +181,10 @@ export default function Messages() {
                   )}
                 </div>
                 <p className="truncate text-xs text-gray-500">
-                  {conv.lastMessage || "No messages yet"}
+                  {conv.lastMessage ||
+                    (conv.participant?.role === "admin"
+                      ? "Start a conversation with Admin"
+                      : "No messages yet")}
                 </p>
               </div>
             </button>
@@ -208,13 +211,11 @@ export default function Messages() {
                 <ArrowLeft size={20} />
               </button>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0B1D2B] text-sm font-bold text-white">
-                {(activeConversation.participant?.username || "?")
-                  .slice(0, 2)
-                  .toUpperCase()}
+                {activeConversation.participant?.role === "admin" ? "BA" : (activeConversation.participant?.username || "?").slice(0, 2).toUpperCase()}
               </div>
               <div>
                 <p className="font-semibold text-[#0B1D2B]">
-                  {activeConversation.participant?.username || "User"}
+                  {activeConversation.participant?.role === "admin" ? "Bismi Earth Movers Admin" : activeConversation.participant?.username || "User"}
                 </p>
                 <p className="text-xs text-gray-500">
                   {activeConversation.participant?.role || ""}
