@@ -34,4 +34,40 @@ export const messageAPI = {
   markRead: (conversationId) =>
     request(`/messages/${conversationId}/read`, { method: "PATCH" }),
   getUnreadCount: () => request("/messages/unread-count"),
+  getParticipants: () => request("/messages/participants"),
+
+  getGroups: () => request("/messages/groups"),
+  createGroup: (formData) =>
+    fetch("https://bismiserver.onrender.com/api/messages/groups", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      body: formData,
+    }).then(async (r) => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      return d;
+    }),
+  getGroupMessages: (groupId, page = 1) =>
+    request(`/messages/groups/${groupId}/messages?page=${page}`),
+  sendGroupMessage: (groupId, formData) =>
+    fetch(`https://bismiserver.onrender.com/api/messages/groups/${groupId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      body: formData,
+    }).then(async (r) => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      return d;
+    }),
+  deleteGroup: (groupId) =>
+    request(`/messages/groups/${groupId}`, { method: "DELETE" }),
+  addGroupMembers: (groupId, memberIds) =>
+    request(`/messages/groups/${groupId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ memberIds }),
+    }),
+  removeGroupMember: (groupId, userId) =>
+    request(`/messages/groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+  markGroupRead: (groupId) =>
+    request(`/messages/groups/${groupId}/read`, { method: "PATCH" }),
 };
