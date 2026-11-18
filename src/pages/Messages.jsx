@@ -661,8 +661,8 @@ export default function Messages() {
                             <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>
                           )}
                           {msg.location.address && <p className="mb-1 text-xs text-gray-600">{msg.location.address}</p>}
-                          <div className="h-40 w-full overflow-hidden rounded-lg">
-                            <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
+                          <div className="relative z-0 h-40 w-full overflow-hidden rounded-lg" style={{ isolation: "isolate" }}>
+                            <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%", zIndex: 0 }} scrollWheelZoom={false}>
                               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                               <Marker position={[msg.location.latitude, msg.location.longitude]} />
                             </MapContainer>
@@ -728,8 +728,8 @@ export default function Messages() {
                       <div className="mb-2">
                         {msg.location.isLive && <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>}
                         {msg.location.address && <p className="mb-1 text-xs text-gray-600">{msg.location.address}</p>}
-                        <div className="h-40 w-full overflow-hidden rounded-lg">
-                          <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
+                        <div className="relative z-0 h-40 w-full overflow-hidden rounded-lg" style={{ isolation: "isolate" }}>
+                          <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%", zIndex: 0 }} scrollWheelZoom={false}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             <Marker position={[msg.location.latitude, msg.location.longitude]} />
                           </MapContainer>
@@ -803,7 +803,7 @@ export default function Messages() {
 
       {/* Location menu */}
       {showLocationMenu && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-bold text-[#0B1D2B]">Share Live Location</h3>
             <div className="space-y-2">
@@ -824,7 +824,7 @@ export default function Messages() {
               <h3 className="text-lg font-bold text-[#0B1D2B]">Choose Location</h3>
               <button onClick={() => setShowMapPicker(false)}><X size={20} /></button>
             </div>
-            <div className="h-72 w-full overflow-hidden rounded-xl border border-gray-200">
+            <div className="relative z-0 h-72 w-full overflow-hidden rounded-xl border border-gray-200" style={{ isolation: "isolate" }}>
               <LeafletLocationPicker
                 initial={pickedCoords ? [pickedCoords[0], pickedCoords[1]] : undefined}
                 onSelect={(coords) => setPickedCoords([coords.lat, coords.lng, coords.address])}
@@ -875,7 +875,7 @@ export default function Messages() {
 
       {/* New chat modal */}
       {showNewChat && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-bold text-[#0B1D2B]">New Chat</h3>
             <div className="max-h-72 space-y-2 overflow-y-auto">
@@ -898,7 +898,7 @@ export default function Messages() {
 
       {/* New group modal */}
       {showNewGroup && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-bold text-[#0B1D2B]">Create Group</h3>
             <input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Group name" className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
