@@ -24,116 +24,126 @@ function LocationPicker({ onSelect }) {
   return null;
 }
 
-function GoogleMapPicker({ onSelect, initial }) {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const searchInputRef = useRef(null);
+function LeafletLocationPicker({ onSelect, initial }) {
+  const [position, setPosition] = useState(initial || [10.8505, 76.2711]);
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
   const [address, setAddress] = useState("");
+  const debounceRef = useRef(null);
 
-  useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY) return;
-    if (window.google && window.google.maps) {
-      initMap();
-      return;
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      const f = data?.features?.[0]?.properties;
+      const addr = f
+        ? [f.name, f.street, f.city || f.town || f.village, f.state, f.country].filter(Boolean).join(", ")
+        : `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      setAddress(addr);
+      onSelect({ lat, lng, address: addr });
+    } catch {
+      const addr = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      setAddress(addr);
+      onSelect({ lat, lng, address: addr });
     }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-    script.async = true;
-    script.onload = initMap;
-    document.head.appendChild(script);
+  };
 
-    function initMap() {
-      const center = initial || { lat: 10.8505, lng: 76.2711 };
-      const map = new window.google.maps.Map(mapRef.current, {
-        center,
-        zoom: 12,
-      });
-      mapInstanceRef.current = map;
-
-      const marker = new window.google.maps.Marker({
-        position: center,
-        map,
-        draggable: true,
-      });
-      markerRef.current = marker;
-
-      const geocoder = new window.google.maps.Geocoder();
-
-      const updateAddress = (pos) => {
-        geocoder.geocode({ location: pos }, (results, status) => {
-          if (status === "OK" && results && results[0]) {
-            setAddress(results[0].formatted_address);
-            onSelect({ lat: pos.lat, lng: pos.lng, address: results[0].formatted_address });
-          } else {
-            setAddress(`${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`);
-            onSelect({ lat: pos.lat, lng: pos.lng, address: "" });
-          }
-        });
-      };
-
-      updateAddress(center);
-
-      map.addListener("click", (e) => {
-        const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-        marker.setPosition(pos);
-        updateAddress(pos);
-      });
-
-      marker.addListener("dragend", () => {
-        const pos = marker.getPosition();
-        updateAddress({ lat: pos.lat(), lng: pos.lng() });
-      });
-
-      // Autocomplete
-      if (searchInputRef.current) {
-        const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
-          fields: ["formatted_address", "geometry", "name"],
-        });
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          if (!place.geometry) return;
-          const pos = {
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-          };
-          map.setCenter(pos);
-          map.setZoom(16);
-          marker.setPosition(pos);
-          const addr = place.formatted_address || place.name;
-          setAddress(addr);
-          onSelect({ lat: pos.lat, lng: pos.lng, address: addr });
-        });
+  const searchPlaces = (q) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      if (!q.trim()) {
+        setSuggestions([]);
+        return;
       }
-    }
-  }, []);
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6`);
+        const data = await res.json();
+        setSuggestions(data.features || []);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 350);
+  };
 
-  const useCurrentLocation = () => {
+  const selectSuggestion = (feature) => {
+    const [lng, lat] = feature.geometry.coordinates;
+    setPosition([lat, lng]);
+    const p = feature.properties;
+    const addr = [p.name, p.street, p.city || p.town || p.village, p.state, p.country].filter(Boolean).join(", ");
+    setAddress(addr);
+    onSelect({ lat, lng, address: addr });
+    setSuggestions([]);
+    setQuery(addr);
+  };
+
+  const handleCurrentLocation = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
     navigator.geolocation.getCurrentPosition((pos) => {
-      const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      mapInstanceRef.current?.setCenter(p);
-      mapInstanceRef.current?.setZoom(16);
-      markerRef.current?.setPosition(p);
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ location: p }, (results, status) => {
-        if (status === "OK" && results && results[0]) {
-          setAddress(results[0].formatted_address);
-          onSelect({ lat: p.lat, lng: p.lng, address: results[0].formatted_address });
-        } else {
-          setAddress(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
-          onSelect({ lat: p.lat, lng: p.lng, address: "" });
-        }
-      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      setPosition([lat, lng]);
+      reverseGeocode(lat, lng);
+    }, () => alert("Unable to get location"));
+  };
+
+  const MapClick = () => {
+    useMapEvents({
+      click(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+        setPosition([lat, lng]);
+        reverseGeocode(lat, lng);
+      },
     });
+    return null;
   };
 
   return (
     <div>
-      <input ref={searchInputRef} placeholder="Search for a place" className="mb-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-      <div ref={mapRef} style={{ height: 320, width: "100%" }} className="rounded-xl" />
+      <input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          searchPlaces(e.target.value);
+        }}
+        placeholder="Search for a place"
+        className="mb-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+      />
+      {suggestions.length > 0 && (
+        <div className="mb-2 max-h-40 overflow-y-auto rounded-xl border border-gray-200 bg-white">
+          {suggestions.map((s, i) => {
+            const p = s.properties;
+            const label = [p.name, p.street, p.city || p.town || p.village, p.state, p.country].filter(Boolean).join(", ");
+            return (
+              <button key={i} onClick={() => selectSuggestion(s)} className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="h-72 w-full overflow-hidden rounded-xl border border-gray-200">
+        <MapContainer center={position} zoom={13} style={{ height: "100%", width: "100%" }}>
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <MapClick />
+          <Marker
+            position={position}
+            draggable={true}
+            eventHandlers={{
+              dragend: (e) => {
+                const pos = e.target.getLatLng();
+                setPosition([pos.lat, pos.lng]);
+                reverseGeocode(pos.lat, pos.lng);
+              },
+            }}
+          />
+        </MapContainer>
+      </div>
       <p className="mt-2 text-xs text-gray-600">{address}</p>
-      <button onClick={useCurrentLocation} className="mt-2 rounded-xl border border-gray-200 px-3 py-2 text-sm">My Current Location</button>
+      <button onClick={handleCurrentLocation} className="mt-2 rounded-xl border border-gray-200 px-3 py-2 text-sm">Use My Current Location</button>
     </div>
   );
 }
@@ -767,8 +777,8 @@ export default function Messages() {
               <button onClick={() => setShowMapPicker(false)}><X size={20} /></button>
             </div>
             <div className="h-72 w-full overflow-hidden rounded-xl border border-gray-200">
-              <GoogleMapPicker
-                initial={pickedCoords ? { lat: pickedCoords[0], lng: pickedCoords[1] } : undefined}
+              <LeafletLocationPicker
+                initial={pickedCoords ? [pickedCoords[0], pickedCoords[1]] : undefined}
                 onSelect={(coords) => setPickedCoords([coords.lat, coords.lng, coords.address])}
               />
             </div>
