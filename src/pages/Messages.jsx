@@ -1,7 +1,26 @@
 import { useEffect, useState, useRef } from "react";
-import { MessageSquare, Send, ArrowLeft, Search, Paperclip, MapPin, Users, Plus, Trash2, Image as ImageIcon, FileText } from "lucide-react";
+import { MessageSquare, Send, ArrowLeft, Search, Paperclip, MapPin, Users, Plus, Trash2, Image as ImageIcon, FileText, Radio, X } from "lucide-react";
 import { messageAPI } from "../services/messageAPI";
 import { getSocket } from "../services/socket";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+function LocationPicker({ onSelect }) {
+  useMapEvents({
+    click(e) {
+      onSelect([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+  return null;
+}
 
 function getCurrentUserId() {
   try {
@@ -33,6 +52,15 @@ export default function Messages() {
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState(null);
   const [location, setLocation] = useState(null);
+  const [locationMode, setLocationMode] = useState(null); // current | live | pick
+  const [liveDuration, setLiveDuration] = useState(15 * 60 * 1000);
+  const [liveMessageId, setLiveMessageId] = useState(null);
+  const [liveExpiresAt, setLiveExpiresAt] = useState(null);
+  const [pickedCoords, setPickedCoords] = useState(null);
+  const [showLocationMenu, setShowLocationMenu] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const watchIdRef = useRef(null);
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -90,6 +118,14 @@ export default function Messages() {
         return prev;
       });
       loadGroups();
+    });
+
+    socket.on("location_updated", (data) => {
+      setMessages((prev) => prev.map((m) => (m._id === data.messageId ? { ...m, location: { ...m.location, latitude: data.latitude, longitude: data.longitude, url: data.url } } : m)));
+    });
+
+    socket.on("group_location_updated", (data) => {
+      setGroupMessages((prev) => prev.map((m) => (m._id === data.messageId ? { ...m, location: { ...m.location, latitude: data.latitude, longitude: data.longitude, url: data.url } } : m)));
     });
 
     return () => {
@@ -180,6 +216,11 @@ export default function Messages() {
             formData.append("locationLatitude", location.lat);
             formData.append("locationLongitude", location.lng);
             formData.append("locationUrl", location.url);
+            formData.append("locationType", location.type || "current");
+            if (location.type === "live") {
+              formData.append("isLive", "true");
+              formData.append("expiresAt", location.expiresAt?.toISOString?.() || "");
+            }
           }
           const res = await fetch(`https://bismiserver.onrender.com/api/messages/${activeConversation._id}`, {
             method: "POST",
@@ -208,6 +249,11 @@ export default function Messages() {
           formData.append("locationLatitude", location.lat);
           formData.append("locationLongitude", location.lng);
           formData.append("locationUrl", location.url);
+          formData.append("locationType", location.type || "current");
+          if (location.type === "live") {
+            formData.append("isLive", "true");
+            formData.append("expiresAt", location.expiresAt?.toISOString?.() || "");
+          }
         }
         const data = await messageAPI.sendGroupMessage(activeGroup._id, formData);
         setGroupMessages((prev) => [...prev, data.message]);
@@ -231,11 +277,101 @@ export default function Messages() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}` });
+        setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, type: "current" });
+        setLocationMode("current");
+        setShowLocationMenu(false);
       },
       () => alert("Unable to get location")
     );
   };
+
+  const startLiveLocation = (duration) => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    setLiveDuration(duration);
+    const expiresAt = new Date(Date.now() + duration);
+    setLiveExpiresAt(expiresAt);
+    setShowLocationMenu(false);
+    setLocationMode("live");
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const url = `https://www.google.com/maps?q=${lat},${lng}`;
+
+      // send initial live location message
+      const formData = new FormData();
+      formData.append("content", "Live location");
+      formData.append("locationLatitude", lat);
+      formData.append("locationLongitude", lng);
+      formData.append("locationUrl", url);
+      formData.append("locationType", "live");
+      formData.append("isLive", "true");
+      formData.append("expiresAt", expiresAt.toISOString());
+      formData.append("messageType", "location");
+
+      let endpoint = activeConversation
+        ? `https://bismiserver.onrender.com/api/messages/${activeConversation._id}`
+        : `https://bismiserver.onrender.com/api/messages/groups/${activeGroup._id}/messages`;
+
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message);
+        const msg = data.message;
+        msg.location = { latitude: lat, longitude: lng, url, type: "live", isLive: true, expiresAt };
+        if (activeConversation) setMessages((prev) => [...prev, msg]);
+        else setGroupMessages((prev) => [...prev, msg]);
+        setLiveMessageId(msg._id);
+
+        const socket = getSocket();
+        const watchId = navigator.geolocation.watchPosition((p) => {
+          if (Date.now() > expiresAt.getTime()) {
+            stopLiveLocation();
+            return;
+          }
+          const newLat = p.coords.latitude;
+          const newLng = p.coords.longitude;
+          const newUrl = `https://www.google.com/maps?q=${newLat},${newLng}`;
+          if (activeConversation) {
+            socket?.emit("location_update", { conversationId: activeConversation._id, messageId: msg._id, latitude: newLat, longitude: newLng });
+          } else if (activeGroup) {
+            socket?.emit("group_location_update", { groupId: activeGroup._id, messageId: msg._id, latitude: newLat, longitude: newLng });
+          }
+        });
+        watchIdRef.current = watchId;
+
+        setTimeout(() => stopLiveLocation(), duration);
+      } catch (err) {
+        alert(err.message);
+        setLocationMode(null);
+      }
+    }, () => alert("Unable to get location"));
+  };
+
+  const stopLiveLocation = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (liveMessageId) {
+      // mark as no longer live by updating local state
+      setMessages((prev) => prev.map((m) => (m._id === liveMessageId ? { ...m, location: { ...m.location, isLive: false } } : m)));
+      setGroupMessages((prev) => prev.map((m) => (m._id === liveMessageId ? { ...m, location: { ...m.location, isLive: false } } : m)));
+    }
+    setLiveMessageId(null);
+    setLiveExpiresAt(null);
+    setLocationMode(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, []);
 
   const currentUserId = getCurrentUserId();
 
@@ -333,7 +469,21 @@ export default function Messages() {
                   <div key={msg._id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${isMine ? "bg-yellow-400 text-[#0B1D2B]" : "bg-white text-gray-800 shadow-sm"}`}>
                       {msg.messageType === "location" && msg.location?.url && (
-                        <a href={msg.location.url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Open in Google Maps</a>
+                        <div className="mb-2">
+                          {msg.location.isLive && (
+                            <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>
+                          )}
+                          <div className="h-40 w-full overflow-hidden rounded-lg">
+                            <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
+                              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                              <Marker position={[msg.location.latitude, msg.location.longitude]} />
+                            </MapContainer>
+                          </div>
+                          <a href={msg.location.url} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-blue-600 underline">Open in Google Maps</a>
+                          {msg.location.isLive && msg._id === liveMessageId && (
+                            <button onClick={stopLiveLocation} className="mt-2 rounded-lg bg-red-500 px-3 py-1 text-xs text-white">Stop Sharing</button>
+                          )}
+                        </div>
                       )}
                       {msg.attachments?.map((a, i) => (
                         <div key={i} className="mb-2">
@@ -387,7 +537,16 @@ export default function Messages() {
                   <div className="max-w-[75%] rounded-2xl bg-white px-4 py-2 text-sm text-gray-800 shadow-sm">
                     <p className="text-xs font-semibold text-[#0B1D2B]">{msg.sender?.username || "User"}</p>
                     {msg.messageType === "location" && msg.location?.url && (
-                      <a href={msg.location.url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Open in Google Maps</a>
+                      <div className="mb-2">
+                        {msg.location.isLive && <p className="mb-1 text-xs font-bold text-red-600">LIVE</p>}
+                        <div className="h-40 w-full overflow-hidden rounded-lg">
+                          <MapContainer center={[msg.location.latitude, msg.location.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <Marker position={[msg.location.latitude, msg.location.longitude]} />
+                          </MapContainer>
+                        </div>
+                        <a href={msg.location.url} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-blue-600 underline">Open in Google Maps</a>
+                      </div>
                     )}
                     {msg.attachments?.map((a, i) => (
                       <div key={i} className="mb-2">
@@ -423,12 +582,27 @@ export default function Messages() {
             {location && <p className="mb-2 text-xs text-gray-500">Location ready: {location.url}</p>}
             <div className="flex items-center gap-2">
               <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-              <button onClick={() => fileInputRef.current?.click()} className="rounded-xl border border-gray-200 p-2.5 text-gray-600">
-                <Paperclip size={18} />
-              </button>
-              <button onClick={shareLocation} className="rounded-xl border border-gray-200 p-2.5 text-gray-600">
-                <MapPin size={18} />
-              </button>
+              <div className="relative">
+                <button onClick={() => setShowAttachMenu((v) => !v)} className="rounded-xl border border-gray-200 p-2.5 text-gray-600">
+                  <Paperclip size={18} />
+                </button>
+                {showAttachMenu && (
+                  <div className="absolute bottom-12 left-0 z-20 w-52 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                    <button onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-gray-50">
+                      <ImageIcon size={16} /> Gallery / Document
+                    </button>
+                    <button onClick={() => { shareLocation(); setShowAttachMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-gray-50">
+                      <MapPin size={16} /> Current Location
+                    </button>
+                    <button onClick={() => { setShowLocationMenu(true); setShowAttachMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-gray-50">
+                      <Radio size={16} /> Live Location
+                    </button>
+                    <button onClick={() => { setShowMapPicker(true); setShowAttachMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-gray-50">
+                      <MapPin size={16} /> Choose on Map
+                    </button>
+                  </div>
+                )}
+              </div>
               <textarea value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Type a message..." rows={1} className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none" />
               <button onClick={send} className="rounded-xl bg-yellow-400 p-2.5 text-[#0B1D2B]">
                 <Send size={18} />
@@ -437,6 +611,51 @@ export default function Messages() {
           </div>
         )}
       </div>
+
+      {/* Location menu */}
+      {showLocationMenu && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="mb-3 text-lg font-bold text-[#0B1D2B]">Share Live Location</h3>
+            <div className="space-y-2">
+              <button onClick={() => startLiveLocation(15 * 60 * 1000)} className="w-full rounded-xl border border-gray-200 py-2 text-sm">15 minutes</button>
+              <button onClick={() => startLiveLocation(60 * 60 * 1000)} className="w-full rounded-xl border border-gray-200 py-2 text-sm">1 hour</button>
+              <button onClick={() => startLiveLocation(8 * 60 * 60 * 1000)} className="w-full rounded-xl border border-gray-200 py-2 text-sm">8 hours</button>
+            </div>
+            <button onClick={() => setShowLocationMenu(false)} className="mt-4 w-full rounded-xl border border-gray-200 py-2 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Map picker */}
+      {showMapPicker && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-[#0B1D2B]">Choose Location</h3>
+              <button onClick={() => setShowMapPicker(false)}><X size={20} /></button>
+            </div>
+            <div className="h-72 w-full overflow-hidden rounded-xl">
+              <MapContainer center={pickedCoords || [10.8505, 76.2711]} zoom={10} style={{ height: "100%", width: "100%" }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <LocationPicker onSelect={setPickedCoords} />
+                {pickedCoords && <Marker position={pickedCoords} />}
+              </MapContainer>
+            </div>
+            <button
+              onClick={() => {
+                if (!pickedCoords) return alert("Select a location");
+                const [lat, lng] = pickedCoords;
+                setLocation({ lat, lng, url: `https://www.google.com/maps?q=${lat},${lng}`, type: "picked" });
+                setShowMapPicker(false);
+              }}
+              className="mt-4 w-full rounded-xl bg-yellow-400 py-2 text-sm font-semibold text-[#0B1D2B]"
+            >
+              Send Location
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* New chat modal */}
       {showNewChat && (
