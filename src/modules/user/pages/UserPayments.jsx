@@ -179,77 +179,28 @@ export default function UserPayments() {
   };
 
   // ==========================================
-  // CASHFREE PAYMENT VERIFICATION
-  // ==========================================
-
-  const verifyPayment = async (orderId) => {
-    try {
-      setError("");
-      setSuccess("Checking payment status...");
-
-      const response = await apiRequest(
-        `/payments/verify/${encodeURIComponent(orderId)}`
-      );
-
-      if (response.paymentStatus === "PAID") {
-        setSuccess("Payment completed successfully.");
-      } else {
-        setSuccess(
-          "Payment is not confirmed yet. Please refresh after some time."
-        );
-      }
-
-      await fetchPayments(true);
-
-      // Remove query parameters after verification
-      window.history.replaceState(
-        {},
-        document.title,
-        window.location.pathname
-      );
-    } catch (err) {
-      setError(err.message);
-      setSuccess("");
-    }
-  };
-
-  // ==========================================
-  // INITIAL LOAD AND RETURN VERIFICATION
+  // INITIAL LOAD
   // ==========================================
 
   useEffect(() => {
-    const initialize = async () => {
-      await fetchPayments();
-
-      const params = new URLSearchParams(
-        window.location.search
-      );
-
-      const orderId = params.get("order_id");
-
-      if (orderId) {
-        await verifyPayment(orderId);
-      }
-    };
-
-    initialize();
+    fetchPayments();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ==========================================
-  // LOAD CASHFREE SDK
+  // LOAD RAZORPAY SDK
   // ==========================================
 
-  const loadCashfreeSDK = () =>
+  const loadRazorpaySDK = () =>
     new Promise((resolve, reject) => {
-      if (window.Cashfree) {
+      if (window.Razorpay) {
         resolve();
         return;
       }
 
       const scriptUrl =
-        "https://sdk.cashfree.com/js/v3/cashfree.js";
+        "https://checkout.razorpay.com/v1/checkout.js";
 
       const existingScript = document.querySelector(
         `script[src="${scriptUrl}"]`
@@ -263,7 +214,7 @@ export default function UserPayments() {
         existingScript.addEventListener(
           "error",
           () => reject(
-            new Error("Unable to load Cashfree SDK.")
+            new Error("Unable to load Razorpay SDK.")
           ),
           { once: true }
         );
@@ -280,7 +231,7 @@ export default function UserPayments() {
 
       script.onerror = () => {
         reject(
-          new Error("Unable to load Cashfree SDK.")
+          new Error("Unable to load Razorpay SDK.")
         );
       };
 
@@ -305,70 +256,124 @@ export default function UserPayments() {
   // UPI PAYMENT
   // ==========================================
 
-  const handleUpiPayment = async () => {
-    if (!selectedPayment || processing) return;
+ 
+const handleUpiPayment = async () => {
+  if (!selectedPayment || processing) return;
 
-    try {
-      setProcessing(true);
-      setError("");
-      setSuccess("");
+  try {
+    setProcessing(true);
+    setError("");
+    setSuccess("");
 
-      // Create order in backend
-      const response = await apiRequest(
-        `/payments/upi/create-order/${selectedPayment._id}`,
-        {
-          method: "POST",
-        }
+    console.log("1. Creating Razorpay order...");
+
+    const response = await apiRequest(
+      `/payments/upi/create-order/${selectedPayment._id}`,
+      { method: "POST" }
+    );
+
+    console.log("2. Backend response:", response);
+
+    if (!response.razorpayOrderId || !response.keyId) {
+      throw new Error(
+        response.message || "Razorpay order details missing."
       );
+    }
 
-      if (!response.paymentSessionId) {
-        throw new Error(
-          response.message ||
-          "Payment session was not created."
-        );
-      }
+    await loadRazorpaySDK();
 
-      // Load Cashfree SDK
-      await loadCashfreeSDK();
+    console.log("3. Razorpay SDK:", window.Razorpay);
 
-      if (!window.Cashfree) {
-        throw new Error(
-          "Cashfree SDK is not available."
-        );
-      }
+    if (!window.Razorpay) {
+      throw new Error("Razorpay SDK failed to load.");
+    }
 
-      const mode =
-        import.meta.env.VITE_CASHFREE_MODE === "production"
-          ? "production"
-          : "sandbox";
+    const options = {
+      key: response.keyId,
+      amount: Math.round(Number(response.amount) * 100),
+      currency: response.currency || "INR",
+      name: "Bismi Earth Movers",
+      description: "Bill Payment",
+      order_id: response.razorpayOrderId,
 
-      const cashfree = window.Cashfree({
-        mode,
-      });
+      handler: async function (razorpayResponse) {
+        try {
+          console.log("4. Razorpay payment response:", razorpayResponse);
 
-      // Open hosted checkout
-      const result = await cashfree.checkout({
-        paymentSessionId: response.paymentSessionId,
-        redirectTarget: "_self",
-      });
+          const verifyResponse = await apiRequest(
+            "/payments/verify",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                orderId: response.orderId,
+                razorpayOrderId:
+                  razorpayResponse.razorpay_order_id,
+                razorpayPaymentId:
+                  razorpayResponse.razorpay_payment_id,
+                razorpaySignature:
+                  razorpayResponse.razorpay_signature,
+              }),
+            }
+          );
 
-      if (result?.error) {
-        throw new Error(
-          result.error.message ||
-          "Unable to complete payment."
-        );
-      }
+          console.log("5. Verification response:", verifyResponse);
 
-      // Checkout normally redirects the browser.
-      // If it does not redirect, allow the user to retry.
-    } catch (err) {
+          if (verifyResponse.paymentStatus === "PAID") {
+            setSuccess("Payment completed successfully.");
+          } else {
+            setError(
+              verifyResponse.message ||
+              "Payment verification is pending."
+            );
+          }
+
+          await fetchPayments(true);
+        } catch (err) {
+          setError(err.message || "Payment verification failed.");
+        } finally {
+          setProcessing(false);
+        }
+      },
+
+      modal: {
+        ondismiss: () => {
+          setProcessing(false);
+          setShowPaymentModal(false);
+        },
+      },
+
+      theme: {
+        color: "#FACC15",
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+
+    razorpay.on("payment.failed", (failureResponse) => {
+      console.error("Razorpay payment failed:", failureResponse);
+
       setError(
-        err.message || "Unable to start UPI payment."
+        failureResponse?.error?.description ||
+        "Payment failed. Please try again."
       );
 
       setProcessing(false);
-    }
-  };
+    });
+
+    setShowPaymentModal(false);
+
+    console.log("6. Opening Razorpay Checkout...");
+
+    razorpay.open();
+
+  } catch (err) {
+    console.error("UPI payment error:", err);
+
+    setError(err.message || "Unable to start UPI payment.");
+    setProcessing(false);
+  }
+};
+
 
   // ==========================================
   // CASH PAYMENT REQUEST

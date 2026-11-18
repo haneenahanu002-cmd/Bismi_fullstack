@@ -37,7 +37,7 @@ export default function PaymentStatus() {
       }
 
       setStatus("checking");
-      setMessage("Verifying your payment with Cashfree...");
+      setMessage("Verifying your payment with Razorpay...");
 
       const response = await fetch(
         `${API}/payments/verify/${encodeURIComponent(orderId)}`,
@@ -159,7 +159,7 @@ export default function PaymentStatus() {
         )}
 
         <Link
-          to="/user/payments"
+          to="/user/userpayments"
           className="mt-5 block w-full rounded-xl bg-[#0B1D2B] py-3 font-semibold text-white hover:bg-[#16374c]"
         >
           Go to My Payments

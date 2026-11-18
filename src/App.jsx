@@ -217,6 +217,12 @@ export default function App() {
             element={<UserProfile />}
           />
 
+          {/* Payment Status */}
+          <Route
+            path="payment-status"
+            element={<PaymentStatus />}
+          />
+
         </Route>
 
 
