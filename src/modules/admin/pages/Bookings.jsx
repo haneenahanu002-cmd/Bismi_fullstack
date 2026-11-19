@@ -451,13 +451,25 @@ export default function Bookings() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <button
-                        onClick={() => openDetails(booking)}
-                        className="rounded-lg p-2 text-gray-500 hover:bg-yellow-100 hover:text-yellow-700"
-                        title="View booking"
-                      >
-                        <Eye size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openDetails(booking)}
+                          className="rounded-lg p-2 text-gray-500 hover:bg-yellow-100 hover:text-yellow-700"
+                          title="View booking"
+                        >
+                          <Eye size={18} />
+                        </button>
+
+                        {booking.operatorDecision === "Rejected" && (
+                          <button
+                            onClick={() => openDetails(booking)}
+                            className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                            title="Reassign operator"
+                          >
+                            Reassign
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
