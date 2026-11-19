@@ -299,6 +299,7 @@ export default function Bookings() {
         message={message}
         onApprove={() => runDecision("approve")}
         onReject={() => runDecision("reject")}
+        onRefresh={loadData}
         onBack={() => {
           setSelectedBooking(null);
           setMessage("");
@@ -514,6 +515,7 @@ function BookingDetails({
   message,
   onApprove,
   onReject,
+  onRefresh,
   onBack,
 }) {
   const canDecide = booking.status === "Pending";
@@ -791,7 +793,7 @@ function BookingDetails({
                         }
                         setMessage("Booking reassigned successfully.");
                         setSelectedBooking(null);
-                        await loadData();
+                        await onRefresh();
                       } catch (err) {
                         setMessage(err.message);
                       } finally {
