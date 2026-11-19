@@ -790,7 +790,8 @@ function BookingDetails({
                           );
                         }
                         setMessage("Booking reassigned successfully.");
-                        fetchBookings();
+                        setSelectedBooking(null);
+                        await loadData();
                       } catch (err) {
                         setMessage(err.message);
                       } finally {
