@@ -110,9 +110,13 @@ export default function AssignedJobs() {
         throw new Error(data.message || "Failed to accept job.");
       }
 
-      // Remove accepted job from Assigned Jobs list
+      // Keep the job in the same list and update its status to Accepted
       setJobs((prevJobs) =>
-        prevJobs.filter((job) => job._id !== jobId)
+        prevJobs.map((job) =>
+          job._id === jobId
+            ? { ...job, status: "Accepted", operatorDecision: "Accepted" }
+            : job
+        )
       );
 
       alert("Job accepted successfully! You can find it in Complete Jobs.");
@@ -371,9 +375,15 @@ export default function AssignedJobs() {
                             disabled={acceptingId === job._id}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Check size={15} />
+                            {job.operatorDecision === "Accepted" || job.status === "Accepted" ? (
+                              <Check size={15} />
+                            ) : (
+                              <Check size={15} />
+                            )}
                             {acceptingId === job._id
                               ? "Accepting..."
+                              : job.operatorDecision === "Accepted" || job.status === "Accepted"
+                              ? "Accepted"
                               : "Accept"}
                           </button>
 
